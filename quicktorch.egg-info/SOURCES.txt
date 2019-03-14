@@ -1,0 +1,12 @@
+README.md
+setup.py
+quicktorch/__init__.py
+quicktorch/customtransforms.py
+quicktorch/data.py
+quicktorch/datasets.py
+quicktorch/models.py
+quicktorch/utils.py
+quicktorch.egg-info/PKG-INFO
+quicktorch.egg-info/SOURCES.txt
+quicktorch.egg-info/dependency_links.txt
+quicktorch.egg-info/top_level.txt
