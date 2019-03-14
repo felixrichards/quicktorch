@@ -1,14 +1,14 @@
 # quicktorch
 My simple pytorch wrapper with some utils for quick prototyping.
 
-### Installation
+## Installation
 
 todo
 
 
-### Features
+## Features
 
-##### Custom transforms for loading datasets in a convenient format:
+### Custom transforms for loading datasets in a convenient format:
 
 ```
 from quicktorch.customtransforms import ConvertType, MakeCategorical
@@ -24,7 +24,7 @@ trainset = torchvision.datasets.CIFAR10(root='./data', train=True,
                                         target_transform=target_transform)
 ```
 
-##### Common dataset wrappers:
+### Common dataset wrappers:
 
 ```
 from quicktorch.data import cifar
@@ -32,7 +32,7 @@ from quicktorch.data import cifar
 trainloader, testloader, classes = cifar(alexnet=True, batch_size=256)
 ```
 
-##### Extensions of Dataset class for common dataset types. 
+### Extensions of Dataset class for common dataset types. 
 
 For classification dataset create a CSV file with headers "imagename,label" and put it in image folder:
 
@@ -66,7 +66,7 @@ images, labels = next(iter(dataloader))
 imshow(images)
 ```
 
-##### Extension of Model class for extra utilities
+### Extension of Model class for extra utilities
 
 Enabling pretraining and transfer learning for new dataset with N classes:
 
@@ -104,7 +104,7 @@ net = SmallNet(name="mysecondcnntest")
 train(net, trainloader, save_best=True)
 ```
 
-##### Other miscellaneous utilities
+### Other miscellaneous utilities
 
 Some features:
 * Neat image vis for classification and mask datasets (shown above)
