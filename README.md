@@ -3,8 +3,11 @@ My simple pytorch wrapper with some utils for quick prototyping.
 
 ## Installation
 
-todo
-
+```
+git clone https://github.com/felixajwndqw/quicktorch/
+cd quicktorch
+python setup.py install
+```
 
 ## Features
 
