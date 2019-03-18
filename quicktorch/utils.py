@@ -27,6 +27,12 @@ def training_stuff(net, data, opt, criterion, use_cuda, train=True):
     return loss, corr
 
 
+def match_shape(out, lbls):
+    if out.size(0) != lbls.size(0):
+        lbls.unsqueeze_(0)
+    return lbls
+
+
 def train(net, input, criterion='default',
           epochs=5, opt='default', sch=None,
           use_cuda=True,
@@ -246,12 +252,14 @@ def validate_opt_crit(opt, criterion, params):
     if len(opt) != len(params):
         raise ValueError('No of optimizers does not match no of params')
 
+    opt = list(opt)
     for i in range(len(opt)):
         if not isinstance(opt[i], optim.Optimizer):
             if opt[i] is 'default':
                 opt[i] = optim.SGD(params[i], lr=0.01)
             else:
                 raise ValueError('Invalid input for opt')
+    opt = tuple(opt)
     if not isinstance(criterion, nn.modules.loss._Loss):
         if criterion is 'default':
             criterion = nn.MSELoss()
