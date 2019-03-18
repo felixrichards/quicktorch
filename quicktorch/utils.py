@@ -297,13 +297,14 @@ def imshow(img, lbls=None, classes=None):
                 npimg = np.hstack((npimg, nplbls))
             # Labels are categorical
             else:
-                if max(lbls) > 1:
+                if lbls.dim() > 1:
                     lbls = list(lbls.argmax(dim=1))
                 else:
                     lbls = list(lbls)
         if type(lbls) is list:
             plt.title(' '.join('%5s' % str(lbls[j]) for j in range(len(lbls))))
 
+    print(lbls)
     # Show class labels if available
     if classes is not None:
         plt.title(' '.join('%5s' % classes[int(lbls[j])] for j in range(len(lbls))))
