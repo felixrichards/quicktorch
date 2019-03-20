@@ -19,6 +19,8 @@ def training_stuff(net, data, opt, criterion, use_cuda, train=True):
     opt.zero_grad()
     with torch.set_grad_enabled(train):
         output = net(images)
+        if output.size() != labels.size():
+            print(output.size(), labels.size())
         corr = (output*labels).ceil().detach()
         loss = criterion(output, labels)
     if train:
@@ -51,7 +53,7 @@ def train(net, input, criterion='default',
     # Store input sizes and batch sizes
     size = {}
     b_size = {}
-    if input is list:
+    if type(input) is list:
         if len(input) == 2:
             phases = ['train', 'val']
             size['train'] = len(input[0])*input[0].batch_size
@@ -65,15 +67,16 @@ def train(net, input, criterion='default',
         phases = ['train']
         size['train'] = len(input)*input.batch_size
         b_size['train'] = input.batch_size
+        input = [input]
 
     for epoch in range(epochs):
         print('Epoch {}/{}'.format(epoch+1, epochs))
         print('-' * 15)
 
-        running_loss = 0.0
-        running_corr = 0
         # Loop through phases e.g. ['train', 'val']
-        for phase in phases:
+        for j, phase in enumerate(phases):
+            running_loss = 0.0
+            running_corr = 0
             if sch is not None:
                 if phase == 'train':
                     sch.step()
@@ -86,7 +89,7 @@ def train(net, input, criterion='default',
             # Print progress every 10th of batch size
             print_iter = int(size[phase]/b_size['train']/10)
 
-            for i, data in enumerate(input, 0):
+            for i, data in enumerate(input[j], 0):
                 # Run training process
                 loss, corr = training_stuff(net, data, opt,
                                             criterion, use_cuda,
@@ -106,8 +109,8 @@ def train(net, input, criterion='default',
                     print('Epoch [{}/{}]. Iter [{}/{}]. Loss: {:.4f}. Acc: {:.4f}. Avg time/iter: {:.4f}'
                           .format(
                             epoch+1, epochs, i, size[phase]//b_size['train'],
-                            running_loss/(i*b_size[phase]),
-                            running_corr.item()/(i*b_size[phase]),
+                            running_loss/((i+1)*b_size[phase]),
+                            running_corr.item()/((i+1)*b_size[phase]),
                             avg_time))
 
             epoch_loss = running_loss/size[phase]

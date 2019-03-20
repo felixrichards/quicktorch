@@ -89,6 +89,16 @@ class Model(nn.Module):
                     print("Empty string. Try again.")
                     name = input("Filename: ")
 
+        if not os.path.exists(save_dir):
+            print("Folder does not exist, would you like to create it?")
+            ans = input("[Y/N]: ")
+            while not (ans is "Y" or ans is "y" or ans is "N" or ans is "n"):
+                print("Invalid input. Try again.")
+                ans = input("[Y/N]: ")
+            if ans is "Y" or "y":
+                os.makedirs(save_dir)
+            else:
+                print("Aborting.")
         save_path = os.path.join(save_dir, name)
         if not overwrite and (os.path.isfile(save_path) or
                               os.path.isfile(save_path+".pk")):
