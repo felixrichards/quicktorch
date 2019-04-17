@@ -35,6 +35,28 @@ def cifar(alexnet=False, batch_size=4):
 
     return trainloader, testloader, classes
 
+def mnist(batch_size=32):
+
+    transform = transforms.Compose([
+                                    transforms.ToTensor(),
+                                    transforms.Normalize((0.1307,), (0.3081,))
+                                    ])
+    target_transform = MakeCategorical()
+
+    trainloader = torch.utils.data.DataLoader(
+        torchvision.datasets.MNIST('../data', train=True, download=True,
+                        transform=transform,
+                        target_transform=target_transform),
+        batch_size=batch_size, shuffle=True)
+    testloader = torch.utils.data.DataLoader(
+        torchvision.datasets.MNIST('../data', train=False, transform=transform,
+                        target_transform=target_transform),
+        batch_size=batch_size, shuffle=True)
+    
+    classes = ("0", "1", "2", "3", "4", "5", "6", "7", "8", "9")
+
+    return trainloader, testloader, classes
+
 
 def clouds(image_dir='./clouds/swimseg/images/',
            target_image_dir='./clouds/swimseg/GTmaps/',
