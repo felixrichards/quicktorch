@@ -1,4 +1,6 @@
 quicktorch/pycache/
 build/
 dist/
+data/
+.vscode/
 quicktorch.egg-info/

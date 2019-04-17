@@ -12,16 +12,12 @@ from skimage import io
 
 def training_stuff(net, data, opt, criterion, use_cuda, train=True):
     images, labels = data
-    # labels = torch.tensor(labels, dtype=torch.float)
-    # labels = make_categorical(labels)
     if use_cuda:
         images, labels = images.cuda(), labels.cuda()
     opt.zero_grad()
     with torch.set_grad_enabled(train):
         output = net(images)
-        if output.size() != labels.size():
-            print(output.size(), labels.size())
-        corr = (output*labels).ceil().detach()
+        corr = (output*labels).clamp(0, 1).ceil().detach()
         loss = criterion(output, labels)
     if train:
         loss.backward()
@@ -56,8 +52,8 @@ def train(net, input, criterion='default',
     if type(input) is list:
         if len(input) == 2:
             phases = ['train', 'val']
-            size['train'] = len(input[0])*input[0].batch_size
-            size['val'] = len(input[1])*input[1].batch_size
+            size['train'] = len(input[0].dataset)
+            size['val'] = len(input[1].dataset)
             b_size['train'] = input[0].batch_size
             b_size['val'] = input[1].batch_size
         else:
@@ -65,7 +61,7 @@ def train(net, input, criterion='default',
             return
     elif isinstance(input, torch.utils.data.DataLoader):
         phases = ['train']
-        size['train'] = len(input)*input.batch_size
+        size['train'] = len(input.dataset)
         b_size['train'] = input.batch_size
         input = [input]
 
@@ -307,7 +303,6 @@ def imshow(img, lbls=None, classes=None):
         if type(lbls) is list:
             plt.title(' '.join('%5s' % str(lbls[j]) for j in range(len(lbls))))
 
-    print(lbls)
     # Show class labels if available
     if classes is not None:
         plt.title(' '.join('%5s' % classes[int(lbls[j])] for j in range(len(lbls))))
