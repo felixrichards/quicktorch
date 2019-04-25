@@ -15,7 +15,7 @@ python setup.py install
 
 ```
 from quicktorch.customtransforms import ConvertType, MakeCategorical
-import torchvision
+import torchvision.transforms as transforms
 
 target_transform = transforms.Compose([
     ConvertType(torch.float),
