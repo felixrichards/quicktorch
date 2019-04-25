@@ -35,12 +35,16 @@ def cifar(alexnet=False, batch_size=4):
 
     return trainloader, testloader, classes
 
-def mnist(batch_size=32):
+def mnist(batch_size=32, rotate=False):
 
-    transform = transforms.Compose([
-                                    transforms.ToTensor(),
-                                    transforms.Normalize((0.1307,), (0.3081,))
-                                    ])
+    transform = [
+                    transforms.ToTensor(),
+                    transforms.Normalize((0.1307,), (0.3081,))
+                ]
+    if rotate:
+        transform.insert(0, transforms.RandomRotation(180))
+
+    transform = transforms.Compose(transform)
     target_transform = MakeCategorical()
 
     trainloader = torch.utils.data.DataLoader(
