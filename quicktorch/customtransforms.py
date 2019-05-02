@@ -16,7 +16,7 @@ class MakeCategorical(object):
         self.classes = n_classes
 
     def __call__(self, labels):
-        if not isinstance(labels, torch.tensor):
+        if not isinstance(labels, torch.Tensor):
             labels = torch.tensor(labels)
         
         if labels.dim() == 0:
