@@ -16,7 +16,9 @@ class MakeCategorical(object):
         self.classes = n_classes
 
     def __call__(self, labels):
-        print(labels)
+        if not isinstance(labels, torch.tensor):
+            labels = torch.tensor(labels)
+        
         if labels.dim() == 0:
             n_labels = torch.zeros(self.classes)
             n_labels[int(labels)] = 1
@@ -26,3 +28,5 @@ class MakeCategorical(object):
         for i, label in enumerate(labels):
             n_labels[i, int(label)] = 1
         return n_labels
+
+    def check_dim(self, t):
