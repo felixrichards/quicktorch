@@ -28,5 +28,3 @@ class MakeCategorical(object):
         for i, label in enumerate(labels):
             n_labels[i, int(label)] = 1
         return n_labels
-
-    def check_dim(self, t):
