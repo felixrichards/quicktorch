@@ -17,7 +17,8 @@ def training_stuff(net, data, opt, criterion, use_cuda, train=True):
     opt.zero_grad()
     with torch.set_grad_enabled(train):
         output = net(images)
-        corr = (output*labels).clamp(0, 1).ceil().detach()
+        predicted = (output == output.max(1, keepdim=True)[0])
+        corr = (predicted*labels.byte()).detach()
         loss = criterion(output, labels)
     if train:
         loss.backward()
@@ -41,6 +42,7 @@ def train(net, input, criterion='default',
     # Record time
     since = time.time()
     best_acc = 0.
+    best_epoch = 0
     
     # Validate given opt and criterion args
     opt, criterion = validate_opt_crit(opt, criterion, net.parameters())
@@ -125,6 +127,7 @@ def train(net, input, criterion='default',
                 net.save(checkpoint=checkpoint)
             if phase == 'val' and epoch_acc > best_acc:
                 best_acc = epoch_acc
+                best_epoch = epoch + 1
                 if save_best and not save_all:
                     net.save(checkpoint=checkpoint)
 
@@ -134,6 +137,9 @@ def train(net, input, criterion='default',
     time_elapsed = time.time() - since
     print('Training complete in {:.0f}m {:.0f}s'.format(
         time_elapsed // 60, time_elapsed % 60))
+    if best_acc > 0:
+        print('Best accuracy was {} at epoch {}'.format(best_acc, best_epoch))
+        return (best_acc, best_epoch)
 
 
 def train_gan(netG, netD, input, criterion='default',

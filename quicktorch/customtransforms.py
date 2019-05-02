@@ -16,6 +16,7 @@ class MakeCategorical(object):
         self.classes = n_classes
 
     def __call__(self, labels):
+        print(labels)
         if labels.dim() == 0:
             n_labels = torch.zeros(self.classes)
             n_labels[int(labels)] = 1
