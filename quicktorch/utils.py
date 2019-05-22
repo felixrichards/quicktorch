@@ -10,19 +10,32 @@ from sklearn.model_selection import KFold
 from skimage import io
 
 
-def training_stuff(net, data, opt, criterion, use_cuda, train=True):
+def training_stuff(net, data, opt, criterion, device, train=True):
+    # copy_start = time.time()
     images, labels = data
-    if use_cuda:
-        images, labels = images.cuda(), labels.cuda()
+    images, labels = images.to(device), labels.to(device)
+    # print("Time taken to move to GPU:", time.time() - copy_start)
     opt.zero_grad()
     with torch.set_grad_enabled(train):
+        # net_start = time.time()
         output = net(images)
-        predicted = (output == output.max(1, keepdim=True)[0])
-        corr = (predicted*labels.byte()).detach()
+        # print("Time taken for forward:", time.time() - net_start)
+        
+        # pred_start = time.time()
+        out_idx = output.max(dim = 1)[1]
+        lbl_idx = labels.max(dim = 1)[1]
+        corr = (out_idx == lbl_idx).sum()
+
+        # predicted = (output == output.max(1, keepdim=True)[0])
+        # corr = (predicted*labels.byte()).detach()
+
         loss = criterion(output, labels)
+        # print("Time taken for pred:", time.time() - pred_start)
     if train:
+        # back_start = time.time()
         loss.backward()
         opt.step()
+        # print("Time taken for backward:", time.time() - back_start)
     return loss, corr
 
 
@@ -34,7 +47,7 @@ def match_shape(out, lbls):
 
 def train(net, input, criterion='default',
           epochs=5, opt='default', sch=None,
-          use_cuda=True,
+          device="cpu",
           save=True, save_best=False, save_all=False):
     # Put model in training mode
     net.train()
@@ -73,6 +86,7 @@ def train(net, input, criterion='default',
 
         # Loop through phases e.g. ['train', 'val']
         for j, phase in enumerate(phases):
+            # wait = time.time()
             running_loss = 0.0
             running_corr = 0
             if sch is not None:
@@ -85,16 +99,20 @@ def train(net, input, criterion='default',
             avg_time = 0
 
             # Print progress every 10th of batch size
-            print_iter = int(size[phase]/b_size['train']/10)
+            print_iter = int(size[phase] / b_size['train'] / 10)
+            if print_iter == 0:
+                print_iter += 1
 
+            # print("Time for loop init", time.time() - wait)
             for i, data in enumerate(input[j], 0):
                 # Run training process
                 loss, corr = training_stuff(net, data, opt,
-                                            criterion, use_cuda,
+                                            criterion, device,
                                             phase == 'train')
 
+                # stat_time = time.time()
                 # Increment loss and correct predictions
-                running_loss += loss.item()
+                # running_loss += loss.item()
                 running_corr += corr.sum()
 
                 # Update avg iteration time
@@ -110,7 +128,9 @@ def train(net, input, criterion='default',
                             running_loss/((i+1)*b_size[phase]),
                             running_corr.item()/((i+1)*b_size[phase]),
                             avg_time))
+                # print("Time for calculating stats", time.time() - stat_time)
 
+            # finish_time = time.time()
             epoch_loss = running_loss/size[phase]
             epoch_acc = running_corr.item()/size[phase]
             print('Epoch {} complete. {} Loss: {:.4f} Acc: {:.4f}'.format(
@@ -130,6 +150,7 @@ def train(net, input, criterion='default',
                 best_epoch = epoch + 1
                 if save_best and not save_all:
                     net.save(checkpoint=checkpoint)
+            # print("Time to finish", time.time() - finish_time)
 
 
     # Put model in evaluation mode

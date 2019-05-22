@@ -35,7 +35,7 @@ def cifar(alexnet=False, batch_size=4):
 
     return trainloader, testloader, classes
 
-def mnist(batch_size=32, rotate=False):
+def mnist(batch_size=32, rotate=False, num_workers=0):
 
     transform = [
                     transforms.ToTensor(),
@@ -51,11 +51,11 @@ def mnist(batch_size=32, rotate=False):
         torchvision.datasets.MNIST('../data', train=True, download=True,
                         transform=transform,
                         target_transform=target_transform),
-        batch_size=batch_size, shuffle=True)
+        batch_size=batch_size, shuffle=True, pin_memory=True, num_workers=num_workers)
     testloader = torch.utils.data.DataLoader(
         torchvision.datasets.MNIST('../data', train=False, transform=transform,
                         target_transform=target_transform),
-        batch_size=batch_size, shuffle=True)
+        batch_size=batch_size, shuffle=True, pin_memory=True, num_workers=num_workers)
     
     classes = ("0", "1", "2", "3", "4", "5", "6", "7", "8", "9")
 
