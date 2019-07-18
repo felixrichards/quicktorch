@@ -3,9 +3,29 @@ import torchvision
 from torchvision import transforms
 from .customtransforms import ConvertType, MakeCategorical
 from .datasets import MaskDataset
+r"""
+This module contains functions that heavily abstract the
+dataset loading process for some famous datasets.
+"""
 
 
 def cifar(alexnet=False, batch_size=4):
+    r"""
+    Loads the CIFAR10 dataset.
+
+    This function will search for the dataset first in ./data.
+    If the dataset is not found the function will attempt to download it.
+    Args:
+        alexnet (boolean, optional): If true the images will be resized to
+            224x224 as in the AlexNet paper.
+        batch_size (int, optional): Batch size for the DataLoader.
+            Defaults to 4.
+
+    Returns:
+        torch.utils.data.DataLoader: Contains the training dataset.
+        torch.utils.data.DataLoader: Contains the testing dataset.
+        tuple: Class labels.
+    """
     default_transforms = [
         transforms.ToTensor(),
         transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))]
@@ -36,7 +56,21 @@ def cifar(alexnet=False, batch_size=4):
     return trainloader, testloader, classes
 
 def mnist(batch_size=32, rotate=False, num_workers=0):
+    r"""
+    Loads the CIFAR10 dataset.
 
+    Args:
+        batch_size (int, optional): Batch size for the DataLoader.
+            Defaults to 32.
+        rotate (boolean, optional): If true will apply random rotation
+            to each sample.
+        num_workers (int, optional): Number of workers given to the DataLoader.
+
+    Returns:
+        torch.utils.data.DataLoader: Contains the training dataset.
+        torch.utils.data.DataLoader: Contains the testing dataset.
+        tuple: Class labels.
+    """
     transform = [
                     transforms.ToTensor(),
                     transforms.Normalize((0.1307,), (0.3081,))
