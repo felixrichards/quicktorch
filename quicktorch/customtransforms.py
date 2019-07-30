@@ -27,8 +27,7 @@ class ConvertType(object):
 class MakeCategorical(object):
     r"""Converts a label tensor to categorical/onehot style
 
-    E.g. f([2,5]) = [[0, 0, 1, 0, 0, 0],
-                     [0, 0, 0, 0, 0, 1]]
+    E.g. `MakeCategorical()([2,5]) = [[0, 0, 1, 0, 0, 0], [0, 0, 0, 0, 0, 1]]`
 
     Args:
         n_classes (int, optional): Number of classes. Defaults to 10.
