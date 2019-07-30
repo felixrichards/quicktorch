@@ -143,7 +143,8 @@ def train(net, input, criterion='default',
 
                 # Print progress
                 if i % print_iter == print_iter - 1:
-                    print('Epoch [{}/{}]. Iter [{}/{}]. Loss: {:.4f}. Acc: {:.4f}. Avg time/iter: {:.4f}'
+                    print('Epoch [{}/{}]. Iter [{}/{}]. Loss: {:.4f}. \
+                           Acc: {:.4f}. Avg time/iter: {:.4f}'
                           .format(
                             epoch+1, epochs, i, size[phase]//b_size['train'],
                             running_loss/((i+1)*b_size[phase]),
@@ -193,13 +194,10 @@ def train_gan(netG, netD, input, criterion='default',
     netG.train()
     netD.train()
 
-    # Record time
-    since = time.time()
-    best_acc = 0.
-    
-    optG, optD, criterion = validate_opt_crit((optG, optD),
-                                        criterion,
-                                        (netG.parameters(), netD.parameters()))
+    optG, optD, criterion = _validate_opt_crit((optG, optD),
+                                               criterion,
+                                               (netG.parameters(),
+                                                netD.parameters()))
 
     fixed_noise = torch.randn(64, netG.nz, 1, 1).cuda()
 
@@ -217,7 +215,7 @@ def train_gan(netG, netD, input, criterion='default',
             ############################
             # (1) Update D network: maximize log(D(x)) + log(1 - D(G(z)))
             ###########################
-            ## Train with all-real batch
+            # Train with all-real batch
             netD.zero_grad()
             # Format batch
             real_cpu = data[0].cuda()
@@ -231,7 +229,7 @@ def train_gan(netG, netD, input, criterion='default',
             errD_real.backward()
             D_x = output.mean().item()
 
-            ## Train with all-fake batch
+            # Train with all-fake batch
             # Generate batch of latent vectors
             noise = torch.randn(b_size, netG.nz, 1, 1).cuda()
             # Generate fake image batch with G
@@ -255,7 +253,8 @@ def train_gan(netG, netD, input, criterion='default',
             ###########################
             netG.zero_grad()
             label.fill_(1)  # fake labels are real for generator cost
-            # Since we just updated D, perform another forward pass of all-fake batch through D
+            # Since we just updated D, perform another forward pass
+            # of all-fake batch through D
             output = netD(fake).view(-1)
             # Calculate G's loss based on this output
             errG = criterion(output, label)
@@ -264,24 +263,29 @@ def train_gan(netG, netD, input, criterion='default',
             D_G_z2 = output.mean().item()
             # Update G
             optG.step()
-            del(errG)
 
             # Output training stats
             if i % 50 == 0:
-                print('[%d/%d][%d/%d]\tLoss_D: %.4f\tLoss_G: %.4f\tD(x): %.4f\tD(G(z)): %.4f / %.4f'
-                    % (epoch, epochs, i, len(input),
-                        errD.item(), errG.item(), D_x, D_G_z1, D_G_z2))
+                print('[%d/%d][%d/%d]\tLoss_D: %.4f\tLoss_G: %.4f \
+                       \tD(x): %.4f\tD(G(z)): %.4f / %.4f'
+                      % (epoch, epochs, i, len(input),
+                         errD.item(), errG.item(), D_x, D_G_z1, D_G_z2))
 
             # Save Losses for plotting later
             G_losses.append(errG.item())
             D_losses.append(errD.item())
+            del(errD)
+            del(errG)
 
-            # Check how the generator is doing by saving G's output on fixed_noise
-            if (iters % 500 == 0) or ((i == len(input)-1)): #(epoch == epochs-1) and 
+            # Check on generator by saving G's output on fixed noise
+            if (iters % 500 == 0) or ((i == len(input)-1)):
                 with torch.no_grad():
                     fake = netG(fixed_noise).detach().cpu()
-                img_list.append(torchvision.utils.make_grid(fake, padding=2, normalize=True))
-                io.imsave("gentests/"+str(epoch)+".png", img_list[-1].permute(1, 2, 0))
+                img = torchvision.utils.make_grid(fake, padding=2,
+                                                  normalize=True)
+                img_list.append(img)
+                io.imsave("gentests/"+str(epoch)+".png",
+                          img_list[-1].permute(1, 2, 0))
 
             iters += 1
 
@@ -303,15 +307,15 @@ def _validate_opt_crit(opt, criterion, params):
     opt = list(opt)
     for i in range(len(opt)):
         if not isinstance(opt[i], optim.Optimizer):
-            if opt[i] is 'default':
+            if opt[i] == 'default':
                 opt[i] = optim.SGD(params[i], lr=0.01)
             else:
                 raise ValueError('Invalid input for opt')
     opt = tuple(opt)
     if not isinstance(criterion, nn.modules.loss._Loss):
-        if criterion is 'default':
+        if criterion == 'default':
             criterion = nn.MSELoss()
-        elif criterion is 'bce':
+        elif criterion == 'bce':
             criterion = nn.BCELoss()
         else:
             raise ValueError('Invalid input for criterion')
@@ -360,12 +364,11 @@ def imshow(img, lbls=None, classes=None):
             assert(lbls.size(0) == 1)
             lbls = list(lbls)
         if type(lbls) is list:
-            plt.title(' '.join('%5s' % str(lbls[j]) for j in range(len(lbls))))
-
+            plt.title(' '.join('%5s' % str(lbls) for lbl in lbls))
 
     # Show class labels if available
     if classes is not None:
-        plt.title(' '.join('%5s' % classes[int(lbls[j])] for j in range(len(lbls))))
+        plt.title(' '.join('%5s' % classes[int(lbl)] for lbl in lbls))
 
     plt.imshow(np.transpose(npimg, (1, 2, 0)))
     plt.show()

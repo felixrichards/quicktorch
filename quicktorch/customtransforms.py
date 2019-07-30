@@ -1,21 +1,22 @@
 import torch
-r"""
+"""
 This module contains multiple PIL image transformations
 compatible with torchvision.transforms.Compose.
 """
 
+
 class ConvertType(object):
-    r"""Converts the dtype of a given tensor.
+    """Converts the dtype of a given tensor.
 
     Args:
-        n_type (torch.dtype): Desired dtype to convert to. 
+        n_type (torch.dtype): Desired dtype to convert to.
     """
     def __init__(self, n_type):
         assert isinstance(n_type, torch.dtype)
         self.dtype = n_type
 
     def __call__(self, sample):
-        r"""
+        """
         Args: sample (torch.tensor): Input to be converted.
 
         Returns:
@@ -25,7 +26,7 @@ class ConvertType(object):
 
 
 class MakeCategorical(object):
-    r"""Converts a label tensor to categorical/onehot style
+    """Converts a label tensor to categorical/onehot style
 
     E.g. `MakeCategorical()([2,5]) = [[0, 0, 1, 0, 0, 0], [0, 0, 0, 0, 0, 1]]`
 
@@ -37,7 +38,7 @@ class MakeCategorical(object):
         self.classes = n_classes
 
     def __call__(self, labels):
-        r"""
+        """
         Args:
             labels (torch.tensor): Input to be made categorical.
 

@@ -3,14 +3,14 @@ import torchvision
 from torchvision import transforms
 from .customtransforms import ConvertType, MakeCategorical
 from .datasets import MaskDataset
-r"""
+"""
 This module contains functions that heavily abstract the
 dataset loading process for some famous datasets.
 """
 
 
 def cifar(alexnet=False, batch_size=4):
-    r"""
+    """
     Loads the CIFAR10 dataset.
 
     This function will search for the dataset first in ./data.
@@ -55,8 +55,9 @@ def cifar(alexnet=False, batch_size=4):
 
     return trainloader, testloader, classes
 
+
 def mnist(batch_size=32, rotate=False, num_workers=0):
-    r"""
+    """
     Loads the CIFAR10 dataset.
 
     Args:
@@ -83,14 +84,16 @@ def mnist(batch_size=32, rotate=False, num_workers=0):
 
     trainloader = torch.utils.data.DataLoader(
         torchvision.datasets.MNIST('../data', train=True, download=True,
-                        transform=transform,
-                        target_transform=target_transform),
-        batch_size=batch_size, shuffle=True, pin_memory=True, num_workers=num_workers)
+                                   transform=transform,
+                                   target_transform=target_transform),
+        batch_size=batch_size, shuffle=True,
+        pin_memory=True, num_workers=num_workers)
     testloader = torch.utils.data.DataLoader(
         torchvision.datasets.MNIST('../data', train=False, transform=transform,
-                        target_transform=target_transform),
-        batch_size=batch_size, shuffle=True, pin_memory=True, num_workers=num_workers)
-    
+                                   target_transform=target_transform),
+        batch_size=batch_size, shuffle=True,
+        pin_memory=True, num_workers=num_workers)
+
     classes = ("0", "1", "2", "3", "4", "5", "6", "7", "8", "9")
 
     return trainloader, testloader, classes

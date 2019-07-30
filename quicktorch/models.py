@@ -37,17 +37,15 @@ class Model(nn.Module):
         if "name" in kwargs is None:
             self.name = kwargs.pop("name")
 
-    def change_last_fcn(self, num_classes=10, layer=None, remove=False):
+    def change_last_fcn(self, num_classes=10, layer=None):
         """Modifies the last fully connected layer for transfer learning.
-        
+
         Args:
             num_classes (int, optional): Number of class labels in new dataset.
+                Defaults to 10.
             layer (nn.Linear, optional): Layer to replace current with.
-            remove (boolean, optional): 
+                Defaults to None.
         """
-        if remove:
-            if isinstance(self.classifier[-1], nn.Linear):
-                del(self.classifier[-1])
         if layer is not None:
             if isinstance(layer, nn.Linear):
                 self.classifier.__setitem__(-1, layer)
@@ -97,7 +95,7 @@ class Model(nn.Module):
         This function does not support the loading of additional
         information, e.g. optimizer weights; only model weights
         will be loaded from the state_dict.
- 
+
         Args:
             name (str, optional): Filename.
             save_dir (str, optional): Directory to look for data.
@@ -152,20 +150,21 @@ class Model(nn.Module):
             if self.name is not None:
                 name = self.name
             else:
-                print("No filename given and no default filename exists for this model.")
+                print("No filename given and no default filename \
+                       exists for this model.")
                 print("Please enter a name to save to")
                 name = input("Filename: ")
-                while name is "":
+                while name == "":
                     print("Empty string. Try again.")
                     name = input("Filename: ")
 
         if not os.path.exists(save_dir):
             print("Folder does not exist, would you like to create it?")
             ans = input("[Y/N]: ")
-            while not (ans is "Y" or ans is "y" or ans is "N" or ans is "n"):
+            while not (ans == "Y" or ans == "y" or ans == "N" or ans == "n"):
                 print("Invalid input. Try again.")
                 ans = input("[Y/N]: ")
-            if ans is "Y" or "y":
+            if ans == "Y" or "y":
                 os.makedirs(save_dir)
             else:
                 print("Aborting.")
@@ -400,6 +399,7 @@ class Discriminator(Model):
 
     def forward(self, x):
         return self.discriminate(x)
+
 
 if __name__ == "__main__":
     alexnet = AlexNet()
