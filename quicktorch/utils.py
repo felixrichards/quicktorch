@@ -7,7 +7,7 @@ import time
 import matplotlib.pyplot as plt
 import numpy as np
 from sklearn.model_selection import KFold
-from skimage import io
+from vis import TrainPlot
 
 
 def training_stuff(net, data, opt, criterion, device, train=True):
@@ -350,3 +350,14 @@ def force_cpu(*tensors):
     for t in tensors:
         if isinstance(t, torch.Tensor):
             t.cpu()
+
+
+def main():
+    tst_plot = TrainPlot("Loss")
+    tst_plot.update_plot(1, 0.5)
+    tst_plot.update_plot(2, 0.4)
+    tst_plot.update_plot(3, 0.1)
+
+
+if __name__ == "__main__":
+    main()
