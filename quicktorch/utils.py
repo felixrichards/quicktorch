@@ -1,54 +1,82 @@
 import torch
 import torch.nn as nn
 import torch.optim as optim
-from torch.optim import lr_scheduler
 import torchvision
 import time
 import matplotlib.pyplot as plt
 import numpy as np
-from sklearn.model_selection import KFold
 from vis import TrainPlot
+from sklearn.model_selection import KFold
+from skimage import io
+import PIL
+"""This module provides miscellaneous helper functions for neural network
+experimentation, most notably a training function.
+"""
 
 
-def training_stuff(net, data, opt, criterion, device, train=True):
-    # copy_start = time.time()
+def perform_pass(net, data, opt, criterion, device, train=True):
+    """Performs a forward and backward pass.
+
+    Args:
+        net (torch.nn.Module): Network to propogate.
+        data (list of torch.Tensor): List containing [images, labels].
+        opt (torch.optim.Optimizer): Optimizer function.
+        criterion (torch.nn.modules.loss._Loss): Criterion function.
+        device (str): Index of GPU or 'cpu' if no GPU.
+        train (boolean, optional): Whether to perform backward prop.
+            Defaults to True.
+
+    Returns:
+        float: Loss value
+        float: Number of correct predictions
+    """
     images, labels = data
     images, labels = images.to(device), labels.to(device)
-    # print("Time taken to move to GPU:", time.time() - copy_start)
     opt.zero_grad()
     with torch.set_grad_enabled(train):
-        # net_start = time.time()
         output = net(images)
-        # print("Time taken for forward:", time.time() - net_start)
-        
-        # pred_start = time.time()
-        out_idx = output.max(dim = 1)[1]
-        lbl_idx = labels.max(dim = 1)[1]
+        out_idx = output.max(dim=1)[1]
+        lbl_idx = labels.max(dim=1)[1]
         corr = (out_idx == lbl_idx).sum()
-
-        # predicted = (output == output.max(1, keepdim=True)[0])
-        # corr = (predicted*labels.byte()).detach()
-
         loss = criterion(output, labels)
-        # print("Time taken for pred:", time.time() - pred_start)
     if train:
-        # back_start = time.time()
         loss.backward()
         opt.step()
-        # print("Time taken for backward:", time.time() - back_start)
     return loss, corr
-
-
-def match_shape(out, lbls):
-    if out.size(0) != lbls.size(0):
-        lbls.unsqueeze_(0)
-    return lbls
 
 
 def train(net, input, criterion='default',
           epochs=5, opt='default', sch=None,
           device="cpu",
-          save=True, save_best=False, save_all=False):
+          save_best=False, save_all=False):
+    """Trains a neural network
+
+    This function was written to use extra features added
+    through the quicktorch.Model wrapper, though is still compatible
+    with a naked net.
+
+    Args:
+        net (torch.nn.Module): Network to be trained.
+        input (torch.utils.data.dataloader.Dataloader or
+            list of torch.utils.data.dataloader.Dataloader): Training data.
+            If 2 dataloaders are passed, the 2nd will be used for validation.
+        criterion (torch.nn.modules.loss._Loss, optional): Loss function.
+            Defaults to 'default' which translates to MSE.
+        epochs (int, optional): Number of epochs to train over.
+            Defaults to 5.
+        opt (torch.optim.Optimizer, optional): Optimiser function.
+            Defaults to 'default' which translates to SGD.
+        sch (torch.optim._LRScheduler, optional): Learning rate scheduling
+            function. Defaults to None.
+        device (str, optional): Index of GPU or 'cpu' if no GPU.
+            Defaults to 'cpu'.
+        save_best (boolean, optional): Saves the model at the best epoch.
+            Defaults to False.
+        save_all (boolean, optional): Saves the model at all epochs.
+            Defaults to False.
+
+    Returns:
+    """
     # Put model in training mode
     net.train()
 
@@ -56,10 +84,10 @@ def train(net, input, criterion='default',
     since = time.time()
     best_acc = 0.
     best_epoch = 0
-    
+
     # Validate given opt and criterion args
-    opt, criterion = validate_opt_crit(opt, criterion, net.parameters())
-    
+    opt, criterion = _validate_opt_crit(opt, criterion, net.parameters())
+
     # Check if a validition input set is provided
     # Store input sizes and batch sizes
     size = {}
@@ -86,7 +114,6 @@ def train(net, input, criterion='default',
 
         # Loop through phases e.g. ['train', 'val']
         for j, phase in enumerate(phases):
-            # wait = time.time()
             running_loss = 0.0
             running_corr = 0
             if sch is not None:
@@ -103,16 +130,11 @@ def train(net, input, criterion='default',
             if print_iter == 0:
                 print_iter += 1
 
-            # print("Time for loop init", time.time() - wait)
             for i, data in enumerate(input[j], 0):
                 # Run training process
-                loss, corr = training_stuff(net, data, opt,
-                                            criterion, device,
-                                            phase == 'train')
-
-                # stat_time = time.time()
-                # Increment loss and correct predictions
-                # running_loss += loss.item()
+                loss, corr = perform_pass(net, data, opt,
+                                          criterion, device,
+                                          phase == 'train')
                 running_corr += corr.sum()
 
                 # Update avg iteration time
@@ -122,15 +144,14 @@ def train(net, input, criterion='default',
 
                 # Print progress
                 if i % print_iter == print_iter - 1:
-                    print('Epoch [{}/{}]. Iter [{}/{}]. Loss: {:.4f}. Acc: {:.4f}. Avg time/iter: {:.4f}'
+                    print('Epoch [{}/{}]. Iter [{}/{}]. Loss: {:.4f}. \
+                           Acc: {:.4f}. Avg time/iter: {:.4f}'
                           .format(
                             epoch+1, epochs, i, size[phase]//b_size['train'],
                             running_loss/((i+1)*b_size[phase]),
                             running_corr.item()/((i+1)*b_size[phase]),
                             avg_time))
-                # print("Time for calculating stats", time.time() - stat_time)
 
-            # finish_time = time.time()
             epoch_loss = running_loss/size[phase]
             epoch_acc = running_corr.item()/size[phase]
             print('Epoch {} complete. {} Loss: {:.4f} Acc: {:.4f}'.format(
@@ -150,8 +171,6 @@ def train(net, input, criterion='default',
                 best_epoch = epoch + 1
                 if save_best and not save_all:
                     net.save(checkpoint=checkpoint)
-            # print("Time to finish", time.time() - finish_time)
-
 
     # Put model in evaluation mode
     net.eval()
@@ -164,20 +183,22 @@ def train(net, input, criterion='default',
 
 
 def train_gan(netG, netD, input, criterion='default',
-          epochs=1000, optG='default', optD='default', sch=None,
-          use_cuda=True,
-          save=True, save_best=False, save_all=False):
+              epochs=1000, optG='default', optD='default', sch=None,
+              use_cuda=True,
+              save=True, save_best=False, save_all=False):
+    """Trains a generator and discriminator.
+
+    This function is unfinished and mostly copied from the Pytorch
+    tutorials.
+    """
     # Put model in training mode
     netG.train()
     netD.train()
 
-    # Record time
-    since = time.time()
-    best_acc = 0.
-    
-    optG, optD, criterion = validate_opt_crit((optG, optD),
-                                        criterion,
-                                        (netG.parameters(), netD.parameters()))
+    optG, optD, criterion = _validate_opt_crit((optG, optD),
+                                               criterion,
+                                               (netG.parameters(),
+                                                netD.parameters()))
 
     fixed_noise = torch.randn(64, netG.nz, 1, 1).cuda()
 
@@ -195,7 +216,7 @@ def train_gan(netG, netD, input, criterion='default',
             ############################
             # (1) Update D network: maximize log(D(x)) + log(1 - D(G(z)))
             ###########################
-            ## Train with all-real batch
+            # Train with all-real batch
             netD.zero_grad()
             # Format batch
             real_cpu = data[0].cuda()
@@ -209,7 +230,7 @@ def train_gan(netG, netD, input, criterion='default',
             errD_real.backward()
             D_x = output.mean().item()
 
-            ## Train with all-fake batch
+            # Train with all-fake batch
             # Generate batch of latent vectors
             noise = torch.randn(b_size, netG.nz, 1, 1).cuda()
             # Generate fake image batch with G
@@ -233,7 +254,8 @@ def train_gan(netG, netD, input, criterion='default',
             ###########################
             netG.zero_grad()
             label.fill_(1)  # fake labels are real for generator cost
-            # Since we just updated D, perform another forward pass of all-fake batch through D
+            # Since we just updated D, perform another forward pass
+            # of all-fake batch through D
             output = netD(fake).view(-1)
             # Calculate G's loss based on this output
             errG = criterion(output, label)
@@ -242,33 +264,38 @@ def train_gan(netG, netD, input, criterion='default',
             D_G_z2 = output.mean().item()
             # Update G
             optG.step()
-            del(errG)
 
             # Output training stats
             if i % 50 == 0:
-                print('[%d/%d][%d/%d]\tLoss_D: %.4f\tLoss_G: %.4f\tD(x): %.4f\tD(G(z)): %.4f / %.4f'
-                    % (epoch, epochs, i, len(input),
-                        errD.item(), errG.item(), D_x, D_G_z1, D_G_z2))
+                print('[%d/%d][%d/%d]\tLoss_D: %.4f\tLoss_G: %.4f \
+                       \tD(x): %.4f\tD(G(z)): %.4f / %.4f'
+                      % (epoch, epochs, i, len(input),
+                         errD.item(), errG.item(), D_x, D_G_z1, D_G_z2))
 
             # Save Losses for plotting later
             G_losses.append(errG.item())
             D_losses.append(errD.item())
+            del(errD)
+            del(errG)
 
-            # Check how the generator is doing by saving G's output on fixed_noise
-            if (iters % 500 == 0) or ((i == len(input)-1)): #(epoch == epochs-1) and 
+            # Check on generator by saving G's output on fixed noise
+            if (iters % 500 == 0) or ((i == len(input)-1)):
                 with torch.no_grad():
                     fake = netG(fixed_noise).detach().cpu()
-                img_list.append(torchvision.utils.make_grid(fake, padding=2, normalize=True))
-                io.imsave("gentests/"+str(epoch)+".png", img_list[-1].permute(1, 2, 0))
+                img = torchvision.utils.make_grid(fake, padding=2,
+                                                  normalize=True)
+                img_list.append(img)
+                io.imsave("gentests/"+str(epoch)+".png",
+                          img_list[-1].permute(1, 2, 0))
 
             iters += 1
-    # for img in img_list:
-    #     imshow(img)
 
 
+def _validate_opt_crit(opt, criterion, params):
+    """Validates optimiser and criterion
 
-
-def validate_opt_crit(opt, criterion, params):
+    Can pass multiple optimisers/parameters.
+    """
     # Set default optimiser to SGD
     if type(opt) is not tuple:
         opt = (opt,)
@@ -281,31 +308,38 @@ def validate_opt_crit(opt, criterion, params):
     opt = list(opt)
     for i in range(len(opt)):
         if not isinstance(opt[i], optim.Optimizer):
-            if opt[i] is 'default':
+            if opt[i] == 'default':
                 opt[i] = optim.SGD(params[i], lr=0.01)
             else:
                 raise ValueError('Invalid input for opt')
     opt = tuple(opt)
     if not isinstance(criterion, nn.modules.loss._Loss):
-        if criterion is 'default':
+        if criterion == 'default':
             criterion = nn.MSELoss()
-        elif criterion is 'bce':
+        elif criterion == 'bce':
             criterion = nn.BCELoss()
         else:
             raise ValueError('Invalid input for criterion')
-    
+
     return (*opt, criterion)
 
 
-def make_categorical(labels, classes=10):
-    n_labels = torch.zeros(len(labels), classes)
-    for i, label in enumerate(labels):
-        n_labels[i, int(label)] = 1
-    return n_labels
-
-
 def imshow(img, lbls=None, classes=None):
+    """Plots image(s) and their labels with pyplot.
+
+    This function is capable of plotting single or multiple images,
+    with class (categorical or not) or mask labels. Will attempt to use
+    actual class labels if given.
+
+    Args:
+        img (torch.Tensor or PIL.Image.Image): Image data.
+        lbls (int or list of int or torch.Tensor): Label data.
+        classes (list of str): Class label titles.
+    """
     force_cpu(img, lbls, classes)
+
+    if isinstance(img, PIL.Image.Image):
+        img = torchvision.transforms.transforms.ToTensor()(img)
 
     orig_img_size = img.size()
     img = torchvision.utils.make_grid(img)
@@ -327,18 +361,31 @@ def imshow(img, lbls=None, classes=None):
                     lbls = list(lbls.argmax(dim=1))
                 else:
                     lbls = list(lbls)
+        if type(lbls) is int:
+            assert(lbls.size(0) == 1)
+            lbls = list(lbls)
         if type(lbls) is list:
-            plt.title(' '.join('%5s' % str(lbls[j]) for j in range(len(lbls))))
+            plt.title(' '.join('%5s' % str(lbls) for lbl in lbls))
 
     # Show class labels if available
     if classes is not None:
-        plt.title(' '.join('%5s' % classes[int(lbls[j])] for j in range(len(lbls))))
+        plt.title(' '.join('%5s' % classes[int(lbl)] for lbl in lbls))
 
     plt.imshow(np.transpose(npimg, (1, 2, 0)))
     plt.show()
 
 
 def get_splits(N, n_splits=5):
+    """Produces validation split indices.
+
+    Args:
+        N (int): Size of validation dataset.
+        n_splits (int, optional): Desired number of splits.
+            Defaults to 5.
+
+    Returns:
+        np.array: K Fold validation splits.
+    """
     kfold = KFold(n_splits=n_splits, shuffle=True)
     splits = kfold.split(range(N))
     splits = np.array(list(splits))
@@ -347,6 +394,11 @@ def get_splits(N, n_splits=5):
 
 
 def force_cpu(*tensors):
+    """Forces input tensors to be on CPU.
+
+    Args:
+        *tensors (torch.Tensor): tensors to force to CPU.
+    """
     for t in tensors:
         if isinstance(t, torch.Tensor):
             t.cpu()
