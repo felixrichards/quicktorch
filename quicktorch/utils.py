@@ -5,7 +5,7 @@ import torchvision
 import time
 import matplotlib.pyplot as plt
 import numpy as np
-from vis import TrainPlot
+from .vis import TrainPlot
 from sklearn.model_selection import KFold
 from skimage import io
 import PIL
@@ -35,14 +35,11 @@ def perform_pass(net, data, opt, criterion, device, train=True):
     opt.zero_grad()
     with torch.set_grad_enabled(train):
         output = net(images)
-        out_idx = output.max(dim=1)[1]
-        lbl_idx = labels.max(dim=1)[1]
-        corr = (out_idx == lbl_idx).sum()
         loss = criterion(output, labels)
     if train:
         loss.backward()
         opt.step()
-    return loss, corr
+    return loss, output
 
 
 def train(net, input, criterion='default',
@@ -80,11 +77,6 @@ def train(net, input, criterion='default',
     # Put model in training mode
     net.train()
 
-    # Record time
-    since = time.time()
-    best_acc = 0.
-    best_epoch = 0
-
     # Validate given opt and criterion args
     opt, criterion = _validate_opt_crit(opt, criterion, net.parameters())
 
@@ -107,6 +99,22 @@ def train(net, input, criterion='default',
         size['train'] = len(input.dataset)
         b_size['train'] = input.batch_size
         input = [input]
+
+    # Get number of classes
+    N = 0
+    if hasattr(input[0].dataset, 'num_classes'):
+        N = input[0].dataset.num_classes
+    else:
+        N = len(input[0].dataset[0][1])
+
+    # Record time
+    since = time.time()
+    best_acc = 0.
+    best_epoch = 0
+    if N is not 0:
+        confusion = np.zeros((N, N))
+    else:
+        confusion = None
 
     for epoch in range(epochs):
         print('Epoch {}/{}'.format(epoch+1, epochs))
@@ -132,9 +140,16 @@ def train(net, input, criterion='default',
 
             for i, data in enumerate(input[j], 0):
                 # Run training process
-                loss, corr = perform_pass(net, data, opt,
+                loss, output = perform_pass(net, data, opt,
                                           criterion, device,
                                           phase == 'train')
+
+                out_idx = output.max(dim=1)[1]
+                lbl_idx = data[1].max(dim=1)[1]
+                if confusion is not None:
+                    for i, j in out_idx, lbl_idx:
+                        confusion[i, j] += 1
+                corr = (out_idx == lbl_idx).sum()
                 running_corr += corr.sum()
 
                 # Update avg iteration time
