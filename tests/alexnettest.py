@@ -1,8 +1,7 @@
 from quicktorch.models import AlexNet
-from quicktorch.utils import train, imshow
+from quicktorch.utils import train
 from quicktorch.data import cifar
-import torch.optim as optim
-from torch.optim import lr_scheduler
+import torch
 
 
 trainloader, testloader, classes = cifar(alexnet=True, batch_size=8)

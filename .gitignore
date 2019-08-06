@@ -1,4 +1,4 @@
-quicktorch/pycache/
+quicktorch/__pycache__/
 build/
 dist/
 data/
