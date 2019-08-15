@@ -6,6 +6,7 @@ from skimage import io
 import PIL.Image as Image
 import glob
 import numpy as np
+from .customtransforms import MakeCategorical
 """This module provides wrappers for loading custom datasets.
 """
 
@@ -27,13 +28,15 @@ class ClassificationDataset(Dataset):
             weights_url (str, optional): A URL to download pre-trained weights.
             name (str, optional): See above. Defaults to None.
     """
-    def __init__(self, csv_file, transform=transforms.ToTensor()):
+    def __init__(self, csv_file, transform=transforms.ToTensor(),
+                 target_transform=MakeCategorical()):
         self.csv_file = csv_file
         self.image_dir = os.path.split(csv_file)[0]
         csv_data = pd.read_csv(csv_file)
         self.image_paths = [os.path.join(self.image_dir, img)
                             for img in csv_data['imagename']]
         self.transform = transform
+        self.target_transform = target_transform
 
         if type(csv_data['label'][0]) is str:
             key_to_val = {lbl: idx
@@ -47,7 +50,7 @@ class ClassificationDataset(Dataset):
     def __getitem__(self, i):
         image = Image.open(self.image_paths[i])
         image = self.transform(image)
-        label = self.labels[i]
+        label = self.target_transform(self.labels[i])
         return image, label
 
     def __len__(self):

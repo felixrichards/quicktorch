@@ -30,15 +30,19 @@ def perform_pass(net, data, opt, criterion, device, train=True):
         float: Loss value
         float: Number of correct predictions
     """
+    start = time.time()
     images, labels = data
     images, labels = images.to(device), labels.to(device)
     opt.zero_grad()
     with torch.set_grad_enabled(train):
         output = net(images)
         loss = criterion(output, labels)
+    print("Forward pass done in", time.time() - start)
+    start = time.time()
     if train:
         loss.backward()
         opt.step()
+        print("Backward pass done in", time.time() - start)
     return loss, output
 
 
@@ -145,9 +149,12 @@ def train(net, input, criterion='default',
 
             for i, data in enumerate(input[j], 0):
                 # Run training process
+                start = time.time()
                 loss, output = perform_pass(net, data, opt,
                                             criterion, device,
                                             phase == 'train')
+                print("Full pass done in", time.time() - start)
+                start = time.time()
 
                 out_idx = output.max(dim=1)[1]
                 lbl_idx = data[1].max(dim=1)[1]
