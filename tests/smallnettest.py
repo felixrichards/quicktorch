@@ -8,4 +8,5 @@ trainloader, testloader, classes = cifar(batch_size=256)
 smallnet = SmallNet()
 smallnet = smallnet.cuda()
 
-train(smallnet, trainloader)
+a, e, p, r = train(smallnet, trainloader, device=torch.cuda.current_device())
+print(a, e, p, r)

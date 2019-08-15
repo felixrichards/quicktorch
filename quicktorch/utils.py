@@ -5,6 +5,7 @@ import torchvision
 import time
 import matplotlib.pyplot as plt
 import numpy as np
+from .vis import TrainPlot
 from sklearn.model_selection import KFold
 from skimage import io
 import PIL
@@ -34,14 +35,11 @@ def perform_pass(net, data, opt, criterion, device, train=True):
     opt.zero_grad()
     with torch.set_grad_enabled(train):
         output = net(images)
-        out_idx = output.max(dim=1)[1]
-        lbl_idx = labels.max(dim=1)[1]
-        corr = (out_idx == lbl_idx).sum()
         loss = criterion(output, labels)
     if train:
         loss.backward()
         opt.step()
-    return loss, corr
+    return loss, output
 
 
 def train(net, input, criterion='default',
@@ -75,14 +73,13 @@ def train(net, input, criterion='default',
             Defaults to False.
 
     Returns:
+        float: Best accuracy of model.
+        int: Epoch which had best accuracy.
+        float: Precision of model at best epoch.
+        float: Recall of model at best epoch.
     """
     # Put model in training mode
     net.train()
-
-    # Record time
-    since = time.time()
-    best_acc = 0.
-    best_epoch = 0
 
     # Validate given opt and criterion args
     opt, criterion = _validate_opt_crit(opt, criterion, net.parameters())
@@ -107,6 +104,20 @@ def train(net, input, criterion='default',
         b_size['train'] = input.batch_size
         input = [input]
 
+    # Get number of classes
+    N = 0
+    if hasattr(input[0].dataset, 'num_classes'):
+        N = input[0].dataset.num_classes
+    else:
+        N = len(input[0].dataset[0][1])
+
+    # Record time
+    since = time.time()
+    best_accuracy = 0.
+    best_precision = 0.
+    best_recall = 0.
+    best_epoch = 0
+
     for epoch in range(epochs):
         print('Epoch {}/{}'.format(epoch+1, epochs))
         print('-' * 15)
@@ -114,7 +125,10 @@ def train(net, input, criterion='default',
         # Loop through phases e.g. ['train', 'val']
         for j, phase in enumerate(phases):
             running_loss = 0.0
-            running_corr = 0
+            if N is not 0:
+                confusion = torch.zeros(N, N)
+            else:
+                confusion = None
             if sch is not None:
                 if phase == 'train':
                     sch.step()
@@ -131,10 +145,19 @@ def train(net, input, criterion='default',
 
             for i, data in enumerate(input[j], 0):
                 # Run training process
-                loss, corr = perform_pass(net, data, opt,
-                                          criterion, device,
-                                          phase == 'train')
-                running_corr += corr.sum()
+                loss, output = perform_pass(net, data, opt,
+                                            criterion, device,
+                                            phase == 'train')
+
+                out_idx = output.max(dim=1)[1]
+                lbl_idx = data[1].max(dim=1)[1]
+                if confusion is not None:
+                    for i, j in zip(out_idx, lbl_idx):
+                        confusion[i, j] += 1
+                corr = confusion.diag()
+                accuracy = corr.sum() / confusion.sum()
+                precision = (corr / confusion.sum(1)).mean()
+                recall = (corr / confusion.sum(0)).mean()
 
                 # Update avg iteration time
                 iter_end = time.time()
@@ -144,29 +167,42 @@ def train(net, input, criterion='default',
                 # Print progress
                 if i % print_iter == print_iter - 1:
                     print('Epoch [{}/{}]. Iter [{}/{}]. Loss: {:.4f}. \
-                           Acc: {:.4f}. Avg time/iter: {:.4f}'
+                           Acc: {:.4f}. Avg time/iter: {:.4f}. \
+                           Precision: {:.4f}. \
+                           Recall: {:.4f}.'
                           .format(
                             epoch+1, epochs, i, size[phase]//b_size['train'],
                             running_loss/((i+1)*b_size[phase]),
-                            running_corr.item()/((i+1)*b_size[phase]),
+                            accuracy,
+                            precision,
+                            recall,
                             avg_time))
 
             epoch_loss = running_loss/size[phase]
-            epoch_acc = running_corr.item()/size[phase]
-            print('Epoch {} complete. {} Loss: {:.4f} Acc: {:.4f}'.format(
-                  epoch+1, phase, epoch_loss, epoch_acc))
+            print('Epoch {} complete. Phase: {}. \
+                   Loss: {:.4f}. \
+                   Acc: {:.4f}. \
+                   Precision: {:.4f}. \
+                   Recall: {:.4f}.'
+                  .format(
+                    epoch+1, phase, epoch_loss, accuracy,
+                    precision, recall))
 
             checkpoint = {
                 'epoch': epoch+1,
-                'epoch_acc': epoch_acc,
+                'accuracy': accuracy,
+                'precision': precision,
+                'recall': recall,
                 'optimizer_state_dict': opt.state_dict(),
                 'loss': loss
             }
 
             if save_all:
                 net.save(checkpoint=checkpoint)
-            if phase == 'val' and epoch_acc > best_acc:
-                best_acc = epoch_acc
+            if accuracy > best_accuracy:
+                best_accuracy = accuracy
+                best_precision = precision
+                best_recall = recall
                 best_epoch = epoch + 1
                 if save_best and not save_all:
                     net.save(checkpoint=checkpoint)
@@ -176,9 +212,11 @@ def train(net, input, criterion='default',
     time_elapsed = time.time() - since
     print('Training complete in {:.0f}m {:.0f}s'.format(
         time_elapsed // 60, time_elapsed % 60))
-    if best_acc > 0:
-        print('Best accuracy was {} at epoch {}'.format(best_acc, best_epoch))
-        return (best_acc, best_epoch)
+    if best_accuracy > 0:
+        print('Best accuracy was {} at epoch {}'.format(
+            best_accuracy, best_epoch))
+        return (best_accuracy.item(), best_epoch,
+                best_precision.item(), best_recall.item())
 
 
 def train_gan(netG, netD, input, criterion='default',
@@ -401,3 +439,14 @@ def force_cpu(*tensors):
     for t in tensors:
         if isinstance(t, torch.Tensor):
             t.cpu()
+
+
+def main():
+    tst_plot = TrainPlot("Loss")
+    tst_plot.update_plot(1, 0.5)
+    tst_plot.update_plot(2, 0.4)
+    tst_plot.update_plot(3, 0.1)
+
+
+if __name__ == "__main__":
+    main()
