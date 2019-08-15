@@ -28,15 +28,12 @@ class ClassificationDataset(Dataset):
             weights_url (str, optional): A URL to download pre-trained weights.
             name (str, optional): See above. Defaults to None.
     """
-    def __init__(self, csv_file, transform=transforms.ToTensor(),
-                 target_transform=MakeCategorical()):
+    def __init__(self, csv_file, transform=transforms.ToTensor()):
         self.csv_file = csv_file
         self.image_dir = os.path.split(csv_file)[0]
         csv_data = pd.read_csv(csv_file)
         self.image_paths = [os.path.join(self.image_dir, img)
                             for img in csv_data['imagename']]
-        self.transform = transform
-        self.target_transform = target_transform
 
         if type(csv_data['label'][0]) is str:
             key_to_val = {lbl: idx
@@ -46,6 +43,8 @@ class ClassificationDataset(Dataset):
             self.labels = csv_data['label']
 
         self.num_classes = len(set(self.labels))
+        self.transform = transform
+        self.target_transform = MakeCategorical(n_classes=self.num_classes)
 
     def __getitem__(self, i):
         image = Image.open(self.image_paths[i])
