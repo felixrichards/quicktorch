@@ -37,12 +37,12 @@ def perform_pass(net, data, opt, criterion, device, train=True):
     with torch.set_grad_enabled(train):
         output = net(images)
         loss = criterion(output, labels)
-    print("Forward pass done in", time.time() - start)
+    # print("Forward pass done in", time.time() - start)
     start = time.time()
     if train:
         loss.backward()
         opt.step()
-        print("Backward pass done in", time.time() - start)
+        # print("Backward pass done in", time.time() - start)
     return loss, output
 
 
@@ -153,7 +153,7 @@ def train(net, input, criterion='default',
                 loss, output = perform_pass(net, data, opt,
                                             criterion, device,
                                             phase == 'train')
-                print("Full pass done in", time.time() - start)
+                # print("Full pass done in", time.time() - start)
                 start = time.time()
 
                 out_idx = output.max(dim=1)[1]
@@ -173,10 +173,10 @@ def train(net, input, criterion='default',
 
                 # Print progress
                 if i % print_iter == print_iter - 1:
-                    print('Epoch [{}/{}]. Iter [{}/{}]. Loss: {:.4f}. \
-                           Acc: {:.4f}. Avg time/iter: {:.4f}. \
-                           Precision: {:.4f}. \
-                           Recall: {:.4f}.'
+                    print('Epoch [{}/{}]. Iter [{}/{}]. Loss: {:.4f}. '
+                          'Acc: {:.4f}. Avg time/iter: {:.4f}. '
+                          'Precision: {:.4f}. '
+                          'Recall: {:.4f}. '
                           .format(
                             epoch+1, epochs, i, size[phase]//b_size['train'],
                             running_loss/((i+1)*b_size[phase]),
@@ -186,11 +186,11 @@ def train(net, input, criterion='default',
                             avg_time))
 
             epoch_loss = running_loss/size[phase]
-            print('Epoch {} complete. Phase: {}. \
-                   Loss: {:.4f}. \
-                   Acc: {:.4f}. \
-                   Precision: {:.4f}. \
-                   Recall: {:.4f}.'
+            print('Epoch {} complete. Phase: {}. '
+                  'Loss: {:.4f}. '
+                  'Acc: {:.4f}. '
+                  'Precision: {:.4f}. '
+                  'Recall: {:.4f}. '
                   .format(
                     epoch+1, phase, epoch_loss, accuracy,
                     precision, recall))

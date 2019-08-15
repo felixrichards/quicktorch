@@ -32,9 +32,9 @@ class Model(nn.Module):
 
     def __init__(self, **kwargs):
         super(Model, self).__init__()
-        if "weights_url" in kwargs is None:
+        if "weights_url" in kwargs:
             self.weights_url = kwargs.pop("weights_url")
-        if "name" in kwargs is None:
+        if "name" in kwargs:
             self.name = kwargs.pop("name")
 
     def change_last_fcn(self, num_classes=10, layer=None):
@@ -183,11 +183,11 @@ class Model(nn.Module):
                               os.path.isfile(save_path+".pk")):
             print("File exists, adding number to filename prevent overwriting")
             i = 1
-            n_save_path = save_path + str(i)
+            n_save_path = save_path + "(" + str(i) + ")"
             while (os.path.isfile(n_save_path) or
                    os.path.isfile(n_save_path+".pk")):
                 i += 1
-                n_save_path = save_path + str(i)
+                n_save_path = save_path + "(" + str(i) + ")"
             save_path = n_save_path
 
         if os.path.splitext(save_path)[-1] != ".pk":
