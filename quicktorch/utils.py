@@ -121,6 +121,7 @@ def train(net, input, criterion='default',
     best_precision = 0.
     best_recall = 0.
     best_epoch = 0
+    best_checkpoint = {}
 
     for epoch in range(epochs):
         print('Epoch {}/{}'.format(epoch+1, epochs))
@@ -212,7 +213,7 @@ def train(net, input, criterion='default',
                 best_recall = recall
                 best_epoch = epoch + 1
                 if save_best and not save_all:
-                    net.save(checkpoint=checkpoint)
+                    best_checkpoint = checkpoint
 
     # Put model in evaluation mode
     net.eval()
@@ -222,6 +223,8 @@ def train(net, input, criterion='default',
     if best_accuracy > 0:
         print('Best accuracy was {} at epoch {}'.format(
             best_accuracy, best_epoch))
+        if save_best and not save_all:
+            net.save(checkpoint=checkpoint)
         return (best_accuracy.item(), best_epoch,
                 best_precision.item(), best_recall.item())
 
