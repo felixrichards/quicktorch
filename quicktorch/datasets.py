@@ -3,6 +3,7 @@ from torch.utils.data.dataset import Dataset
 import pandas as pd
 import os
 from skimage import io
+import PIL.Image as Image
 import glob
 import numpy as np
 """This module provides wrappers for loading custom datasets.
@@ -44,7 +45,7 @@ class ClassificationDataset(Dataset):
         self.num_classes = len(set(self.labels))
 
     def __getitem__(self, i):
-        image = io.imread(self.image_paths[i])
+        image = Image.open(self.image_paths[i])
         image = self.transform(image)
         label = self.labels[i]
         return image, label
