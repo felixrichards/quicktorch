@@ -224,7 +224,7 @@ def train(net, input, criterion='default',
         print('Best accuracy was {} at epoch {}'.format(
             best_accuracy, best_epoch))
         if save_best and not save_all:
-            net.save(checkpoint=checkpoint)
+            net.save(checkpoint=best_checkpoint)
         return (best_accuracy.item(), best_epoch,
                 best_precision.item(), best_recall.item())
 
