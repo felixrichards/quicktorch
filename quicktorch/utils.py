@@ -160,8 +160,8 @@ def train(net, input, criterion='default',
                 out_idx = output.max(dim=1)[1]
                 lbl_idx = data[1].max(dim=1)[1]
                 if confusion is not None:
-                    for i, j in zip(out_idx, lbl_idx):
-                        confusion[i, j] += 1
+                    for j, k in zip(out_idx, lbl_idx):
+                        confusion[j, k] += 1
                 corr = confusion.diag()
                 accuracy = corr.sum() / confusion.sum()
                 precision = (corr / confusion.sum(1)).mean()
