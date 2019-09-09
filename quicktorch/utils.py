@@ -175,9 +175,10 @@ def train(net, input, criterion='default',
                 # Print progress
                 if i % print_iter == print_iter - 1:
                     print('Epoch [{}/{}]. Iter [{}/{}]. Loss: {:.4f}. '
-                          'Acc: {:.4f}. Avg time/iter: {:.4f}. '
+                          'Acc: {:.4f}. '
                           'Precision: {:.4f}. '
                           'Recall: {:.4f}. '
+                          'Avg time/iter: {:.4f}. '
                           .format(
                             epoch+1, epochs, i, size[phase]//b_size['train'],
                             running_loss/((i+1)*b_size[phase]),
