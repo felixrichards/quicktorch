@@ -191,8 +191,8 @@ def train(net, input, criterion='default',
                           'Recall: {:.4f}. '
                           'Avg time/iter: {:.4f}. '
                           .format(
-                            epoch+1, epochs, i, size[phase]//this_b_size,
-                            running_loss/((i+1)*this_b_size),
+                            epoch+1, epochs, i, size[phase]//b_size[phase],
+                            running_loss/((i+1)*b_size[phase]),
                             accuracy,
                             precision,
                             recall,
