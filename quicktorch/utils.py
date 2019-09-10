@@ -131,6 +131,9 @@ def train(net, input, criterion='default',
         # Loop through phases e.g. ['train', 'val']
         for j, phase in enumerate(phases):
             running_loss = 0.0
+            accuracy = 0.
+            precision = 0.
+            recall = 0.
             if N is not 0:
                 confusion = torch.zeros(N, N)
             else:
@@ -155,12 +158,16 @@ def train(net, input, criterion='default',
                 loss, output = perform_pass(net, data, opt,
                                             criterion, device,
                                             phase == 'train')
+                running_loss += loss.item()
                 # print("Full pass done in", time.time() - start)
                 start = time.time()
 
                 if data[0].size() == data[1].size():
                     if phase == 'val':
-                        accuracy = 10 * log10(1 / loss.item())
+                        accuracy = ((accuracy + 10 * log10(1 / loss.item())) /
+                                    ((i+1)*b_size[phase]))
+                    else:
+                        accuracy = 0.
                 else:
                     out_idx = output.max(dim=1)[1]
                     lbl_idx = data[1].max(dim=1)[1]
