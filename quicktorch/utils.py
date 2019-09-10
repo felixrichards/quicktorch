@@ -9,6 +9,7 @@ from .vis import TrainPlot
 from sklearn.model_selection import KFold
 from skimage import io
 import PIL
+from math import log10
 """This module provides miscellaneous helper functions for neural network
 experimentation, most notably a training function.
 """
@@ -157,15 +158,19 @@ def train(net, input, criterion='default',
                 # print("Full pass done in", time.time() - start)
                 start = time.time()
 
-                out_idx = output.max(dim=1)[1]
-                lbl_idx = data[1].max(dim=1)[1]
-                if confusion is not None:
-                    for j, k in zip(out_idx, lbl_idx):
-                        confusion[j, k] += 1
-                corr = confusion.diag()
-                accuracy = corr.sum() / confusion.sum()
-                precision = (corr / confusion.sum(1)).mean()
-                recall = (corr / confusion.sum(0)).mean()
+                if data[0].size() == data[1].size():
+                    if phase == 'val':
+                        accuracy = 10 * log10(1 / loss.item())
+                else:
+                    out_idx = output.max(dim=1)[1]
+                    lbl_idx = data[1].max(dim=1)[1]
+                    if confusion is not None:
+                        for j, k in zip(out_idx, lbl_idx):
+                            confusion[j, k] += 1
+                    corr = confusion.diag()
+                    accuracy = corr.sum() / confusion.sum()
+                    precision = (corr / confusion.sum(1)).mean()
+                    recall = (corr / confusion.sum(0)).mean()
 
                 # Update avg iteration time
                 iter_end = time.time()
