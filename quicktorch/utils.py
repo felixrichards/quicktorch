@@ -164,8 +164,9 @@ def train(net, input, criterion='default',
 
                 if data[0].size() == data[1].size():
                     if phase == 'val':
-                        accuracy = ((accuracy + 10 * log10(1 / loss.item())) /
-                                    ((i+1)*b_size[phase]))
+                        accuracy += (10 * log10(1 / loss.item()) /
+                                     data.size(0))
+                        print(data.size(0))
                     else:
                         accuracy = 0.
                 else:
