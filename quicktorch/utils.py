@@ -118,9 +118,9 @@ def train(net, input, criterion='default',
 
     # Record time
     since = time.time()
-    best_accuracy = 0.
-    best_precision = 0.
-    best_recall = 0.
+    best_accuracy = torch.tensor(0.)
+    best_precision = torch.tensor(0.)
+    best_recall = torch.tensor(0.)
     best_epoch = 0
     best_checkpoint = {}
 
