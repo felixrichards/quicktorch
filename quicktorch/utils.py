@@ -9,6 +9,7 @@ from .vis import TrainPlot
 from sklearn.model_selection import KFold
 from skimage import io
 import PIL
+from math import log10
 """This module provides miscellaneous helper functions for neural network
 experimentation, most notably a training function.
 """
@@ -117,9 +118,9 @@ def train(net, input, criterion='default',
 
     # Record time
     since = time.time()
-    best_accuracy = 0.
-    best_precision = 0.
-    best_recall = 0.
+    best_accuracy = torch.tensor(0.)
+    best_precision = torch.tensor(0.)
+    best_recall = torch.tensor(0.)
     best_epoch = 0
     best_checkpoint = {}
 
@@ -130,6 +131,10 @@ def train(net, input, criterion='default',
         # Loop through phases e.g. ['train', 'val']
         for j, phase in enumerate(phases):
             running_loss = 0.0
+            running_samples = 0
+            accuracy = 0.
+            precision = 0.
+            recall = 0.
             if N is not 0:
                 confusion = torch.zeros(N, N)
             else:
@@ -144,7 +149,7 @@ def train(net, input, criterion='default',
             avg_time = 0
 
             # Print progress every 10th of batch size
-            print_iter = int(size[phase] / b_size['train'] / 10)
+            print_iter = int(size[phase] / b_size[phase] / 10)
             if print_iter == 0:
                 print_iter += 1
 
@@ -154,18 +159,25 @@ def train(net, input, criterion='default',
                 loss, output = perform_pass(net, data, opt,
                                             criterion, device,
                                             phase == 'train')
+                running_loss += loss.item()
+                running_samples += data[0].size(0)
                 # print("Full pass done in", time.time() - start)
                 start = time.time()
 
-                out_idx = output.max(dim=1)[1]
-                lbl_idx = data[1].max(dim=1)[1]
-                if confusion is not None:
-                    for j, k in zip(out_idx, lbl_idx):
-                        confusion[j, k] += 1
-                corr = confusion.diag()
-                accuracy = corr.sum() / confusion.sum()
-                precision = (corr / confusion.sum(1)).mean()
-                recall = (corr / confusion.sum(0)).mean()
+                if data[0].size() == data[1].size():
+                    with torch.set_grad_enabled(False):
+                        accuracy = ((i * accuracy + 10 * log10(1 / loss.item())) /
+                                    (i + 1))
+                else:
+                    out_idx = output.max(dim=1)[1]
+                    lbl_idx = data[1].max(dim=1)[1]
+                    if confusion is not None:
+                        for j, k in zip(out_idx, lbl_idx):
+                            confusion[j, k] += 1
+                    corr = confusion.diag()
+                    accuracy = corr.sum() / confusion.sum()
+                    precision = (corr / confusion.sum(1)).mean()
+                    recall = (corr / confusion.sum(0)).mean()
 
                 # Update avg iteration time
                 iter_end = time.time()
@@ -180,7 +192,7 @@ def train(net, input, criterion='default',
                           'Recall: {:.4f}. '
                           'Avg time/iter: {:.4f}. '
                           .format(
-                            epoch+1, epochs, i, size[phase]//b_size['train'],
+                            epoch+1, epochs, i, size[phase]//b_size[phase],
                             running_loss/((i+1)*b_size[phase]),
                             accuracy,
                             precision,
@@ -221,13 +233,12 @@ def train(net, input, criterion='default',
     time_elapsed = time.time() - since
     print('Training complete in {:.0f}m {:.0f}s'.format(
         time_elapsed // 60, time_elapsed % 60))
-    if best_accuracy > 0:
-        print('Best accuracy was {} at epoch {}'.format(
-            best_accuracy, best_epoch))
-        if save_best and not save_all:
-            net.save(checkpoint=best_checkpoint)
-        return (best_accuracy.item(), best_epoch,
-                best_precision.item(), best_recall.item())
+    print('Best accuracy was {} at epoch {}'.format(
+        best_accuracy, best_epoch))
+    if save_best and not save_all:
+        net.save(checkpoint=best_checkpoint)
+    return (best_accuracy.item(), best_epoch,
+            best_precision.item(), best_recall.item())
 
 
 def train_gan(netG, netD, input, criterion='default',
