@@ -164,7 +164,6 @@ def train(net, input, criterion='default',
 
                 if data[0].size() == data[1].size():
                     with torch.set_grad_enabled(False):
-                        print(log10(1 / loss.item()))
                         accuracy += (10 * log10(1 / loss.item()) /
                                      data[0].size(0))
                 else:
@@ -232,13 +231,12 @@ def train(net, input, criterion='default',
     time_elapsed = time.time() - since
     print('Training complete in {:.0f}m {:.0f}s'.format(
         time_elapsed // 60, time_elapsed % 60))
-    if best_accuracy > 0:
-        print('Best accuracy was {} at epoch {}'.format(
-            best_accuracy, best_epoch))
-        if save_best and not save_all:
-            net.save(checkpoint=best_checkpoint)
-        return (best_accuracy.item(), best_epoch,
-                best_precision.item(), best_recall.item())
+    print('Best accuracy was {} at epoch {}'.format(
+        best_accuracy, best_epoch))
+    if save_best and not save_all:
+        net.save(checkpoint=best_checkpoint)
+    return (best_accuracy.item(), best_epoch,
+            best_precision.item(), best_recall.item())
 
 
 def train_gan(netG, netD, input, criterion='default',
