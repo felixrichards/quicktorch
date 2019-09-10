@@ -148,13 +148,14 @@ def train(net, input, criterion='default',
             avg_time = 0
 
             # Print progress every 10th of batch size
-            print_iter = int(size[phase] / b_size['train'] / 10)
+            print_iter = int(size[phase] / b_size[phase] / 10)
             if print_iter == 0:
                 print_iter += 1
 
             for i, data in enumerate(input[j], 0):
                 # Run training process
                 start = time.time()
+                this_b_size = data[0].size(0)
                 loss, output = perform_pass(net, data, opt,
                                             criterion, device,
                                             phase == 'train')
@@ -190,8 +191,8 @@ def train(net, input, criterion='default',
                           'Recall: {:.4f}. '
                           'Avg time/iter: {:.4f}. '
                           .format(
-                            epoch+1, epochs, i, size[phase]//b_size['train'],
-                            running_loss/((i+1)*b_size[phase]),
+                            epoch+1, epochs, i, size[phase]//this_b_size,
+                            running_loss/((i+1)*this_b_size),
                             accuracy,
                             precision,
                             recall,
