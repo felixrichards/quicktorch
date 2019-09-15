@@ -44,7 +44,6 @@ def perform_pass(net, data, opt, criterion, device, train=True):
         loss.backward()
         opt.step()
         # print("Backward pass done in", time.time() - start)
-        print(labels.min(), labels.max(), output.min(), output.max())
     return loss, output
 
 
