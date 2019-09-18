@@ -166,7 +166,6 @@ def train(net, input, criterion='default',
 
                 if data[0].size() == data[1].size():
                     with torch.set_grad_enabled(False):
-                        print(10 * log10(1 / loss.item()))
                         accuracy = ((i * accuracy + 10 * log10(1 / loss.item()) *
                                      data[0].size(0) / b_size[phase]) /
                                     (i + 1))
