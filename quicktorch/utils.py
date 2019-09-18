@@ -155,7 +155,6 @@ def train(net, input, criterion='default',
             for i, data in enumerate(input[j], 0):
                 # Run training process
                 start = time.time()
-                this_b_size = data[0].size(0)
                 loss, output = perform_pass(net, data, opt,
                                             criterion, device,
                                             phase == 'train')
@@ -168,8 +167,7 @@ def train(net, input, criterion='default',
                         print(10 * log10(1 / loss.item()))
                         accuracy = ((i * accuracy + 10 * log10(1 / loss.item()) *
                                      data[0].size(0) / b_size[phase]) /
-                                    b_size[phase] /
-                                    (i + 1))
+                                    b_size[phase] * (i + 1))
                 else:
                     out_idx = output.max(dim=1)[1]
                     lbl_idx = data[1].max(dim=1)[1]
