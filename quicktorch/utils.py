@@ -383,7 +383,7 @@ def _validate_opt_crit(opt, criterion, params):
     return (*opt, criterion)
 
 
-def imshow(img, lbls=None, classes=None):
+def imshow(img, lbls=None, classes=None, save_name=None):
     """Plots image(s) and their labels with pyplot.
 
     This function is capable of plotting single or multiple images,
@@ -394,6 +394,7 @@ def imshow(img, lbls=None, classes=None):
         img (torch.Tensor or PIL.Image.Image): Image data.
         lbls (int or list of int or torch.Tensor): Label data.
         classes (list of str): Class label titles.
+        save_name (str): Name to save figure under. If None will not be saved.
     """
     force_cpu(img, lbls, classes)
 
@@ -431,6 +432,13 @@ def imshow(img, lbls=None, classes=None):
         plt.title(' '.join('%5s' % classes[int(lbl)] for lbl in lbls))
 
     plt.imshow(np.transpose(npimg, (1, 2, 0)))
+    plt.axis('off')
+    plt.axis('tight')
+    plt.axis('image')
+    if save_name:
+        if save_name[len(save_name) - 4:] != '.png':
+            save_name += '.png'
+        plt.savefig(save_name)
     plt.show()
 
 
