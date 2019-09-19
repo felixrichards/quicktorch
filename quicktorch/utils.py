@@ -45,13 +45,13 @@ def perform_pass(net, data, opt, criterion, device, train=True,
     start = time.time()
     if train:
         loss.backward()
-        plot_grad_flow(net.named_parameters(), epoch, i)
+        plot_grad_flow(net.name, net.named_parameters(), epoch, i)
         opt.step()
         # print("Backward pass done in", time.time() - start)
     return loss, output
 
 
-def plot_grad_flow(named_parameters, epoch, i):
+def plot_grad_flow(name, named_parameters, epoch, i):
     '''Plots the gradients flowing through different layers in the net during training.
     Can be used for checking for possible gradient vanishing / exploding problems.
 
@@ -79,9 +79,9 @@ def plot_grad_flow(named_parameters, epoch, i):
                 Line2D([0], [0], color="b", lw=4),
                 Line2D([0], [0], color="k", lw=4)], ['max-gradient', 'mean-gradient', 'zero-gradient'])
     plt.tight_layout()
-    fname = "figs/gradflow_epoch{}_iter{}".format(epoch, i)
+    fname = "figs/{}_gradflow_epoch{}_iter{}".format(name, epoch, i)
     plt.savefig(fname)
-    print("gradflow saved under", fname)
+    # print("gradflow saved under", fname)
 
 
 def train(net, input, criterion='default',
