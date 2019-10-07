@@ -195,6 +195,7 @@ def train(net, input, criterion='default',
                                             epoch=epoch, i=i)
                 # print("Full pass done in", time.time() - start)
                 start = time.time()
+                running_loss += loss.item()
 
                 out_idx = output.max(dim=1)[1]
                 lbl_idx = data[1].max(dim=1)[1]
