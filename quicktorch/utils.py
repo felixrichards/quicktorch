@@ -81,6 +81,8 @@ def plot_grad_flow(name, named_parameters, epoch, i):
     plt.tight_layout()
     fname = "figs/{}_gradflow_epoch{}_iter{}".format(name, epoch, i)
     plt.savefig(fname)
+    if i == 5:
+        plt.clf()
     # print("gradflow saved under", fname)
 
 
