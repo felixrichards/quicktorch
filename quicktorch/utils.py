@@ -221,9 +221,9 @@ def train(net, input, criterion='default',
             if save_all:
                 net.save(checkpoint=checkpoint)
             if accuracy > best_accuracy:
-                best_accuracy = accuracy
-                best_precision = precision
-                best_recall = recall
+                best_accuracy = torch.tensor(accuracy)
+                best_precision = torch.tensor(precision)
+                best_recall = torch.tensor(recall)
                 best_epoch = epoch + 1
                 if save_best and not save_all:
                     best_checkpoint = checkpoint
