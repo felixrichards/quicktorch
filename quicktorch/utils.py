@@ -139,12 +139,6 @@ def train(net, input, criterion='default',
                 confusion = torch.zeros(N, N)
             else:
                 confusion = None
-            if sch is not None:
-                if phase == 'train':
-                    sch.step()
-                    net.train()
-                else:
-                    net.eval()
             iter_start = time.time()
             avg_time = 0
 
@@ -198,6 +192,17 @@ def train(net, input, criterion='default',
                             precision,
                             recall,
                             avg_time))
+            
+            
+            if sch is not None:
+                if phase == 'train':
+                    if isinstance(sch, optim.lr_scheduler.ReduceLROnPlateau):
+                        sch.step(running_loss)
+                    else:
+                        sch.step()
+                    net.train()
+                else:
+                    net.eval()
 
             epoch_loss = running_loss/size[phase]
             print('Epoch {} complete. Phase: {}. '
@@ -221,9 +226,9 @@ def train(net, input, criterion='default',
             if save_all:
                 net.save(checkpoint=checkpoint)
             if accuracy > best_accuracy:
-                best_accuracy = accuracy
-                best_precision = precision
-                best_recall = recall
+                best_accuracy = torch.tensor(accuracy)
+                best_precision = torch.tensor(precision)
+                best_recall = torch.tensor(recall)
                 best_epoch = epoch + 1
                 if save_best and not save_all:
                     best_checkpoint = checkpoint
@@ -237,8 +242,10 @@ def train(net, input, criterion='default',
         best_accuracy, best_epoch))
     if save_best and not save_all:
         net.save(checkpoint=best_checkpoint)
-    return (best_accuracy.item(), best_epoch,
-            best_precision.item(), best_recall.item())
+    return {'accuracy': best_accuracy.item(),
+            'epoch': best_epoch,
+            'precision': best_precision.item(),
+            'recall': best_recall.item()}
 
 
 def train_gan(netG, netD, input, criterion='default',

@@ -119,7 +119,6 @@ class Model(nn.Module):
         print("Model successfully loaded")
         del (checkpoint['model_state_dict'])
         if checkpoint:
-            print(checkpoint)
             print("File has other items other than model weights:")
             for key in checkpoint:
                 print("\t", key)
