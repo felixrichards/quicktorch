@@ -29,6 +29,7 @@ class Model(nn.Module):
             name (str, optional): See above. Defaults to None.
     """
     name = None
+    save_dir = "models"
 
     def __init__(self, **kwargs):
         super(Model, self).__init__()
@@ -124,7 +125,7 @@ class Model(nn.Module):
                 print("\t", key)
             print("Consider loading them with torch.load()")
 
-    def save(self, name=None, overwrite=False, save_dir="models",
+    def save(self, name=None, overwrite=False, save_dir=None,
              checkpoint=None):
         """Saves a state of the model.
 
@@ -156,6 +157,18 @@ class Model(nn.Module):
                 while name == "":
                     print("Empty string. Try again.")
                     name = input("Filename: ")
+
+        if save_dir is None:
+            if self.save_dir is not None:
+                save_dir = self.save_dir
+            else:
+                print("No save directory given and no default save directory \
+                       exists for this model.")
+                print("Please enter a name to save to")
+                name = input("Save directory: ")
+                while name == "":
+                    print("Empty string. Try again.")
+                    name = input("Save directory: ")
 
         if not os.path.exists(save_dir):
             print("Folder does not exist, would you like to create it?")
