@@ -214,24 +214,25 @@ def train(net, input, criterion='default',
                     epoch+1, phase, epoch_loss, accuracy,
                     precision, recall))
 
-            checkpoint = {
-                'epoch': epoch+1,
-                'accuracy': accuracy,
-                'precision': precision,
-                'recall': recall,
-                'optimizer_state_dict': opt.state_dict(),
-                'loss': loss
-            }
+            if len(phases) == 1 or phase == 'val':
+                checkpoint = {
+                    'epoch': epoch+1,
+                    'accuracy': accuracy,
+                    'precision': precision,
+                    'recall': recall,
+                    'optimizer_state_dict': opt.state_dict(),
+                    'loss': loss
+                }
+                if accuracy > best_accuracy:
+                    best_accuracy = torch.tensor(accuracy)
+                    best_precision = torch.tensor(precision)
+                    best_recall = torch.tensor(recall)
+                    best_epoch = epoch + 1
+                    if save_best and not save_all:
+                        best_checkpoint = checkpoint
 
             if save_all:
                 net.save(checkpoint=checkpoint)
-            if accuracy > best_accuracy:
-                best_accuracy = torch.tensor(accuracy)
-                best_precision = torch.tensor(precision)
-                best_recall = torch.tensor(recall)
-                best_epoch = epoch + 1
-                if save_best and not save_all:
-                    best_checkpoint = checkpoint
 
     # Put model in evaluation mode
     net.eval()
@@ -475,7 +476,7 @@ def force_cpu(*tensors):
     """
     for t in tensors:
         if isinstance(t, torch.Tensor):
-            t.cpu()
+            t.cpu().detach()
 
 
 def main():
