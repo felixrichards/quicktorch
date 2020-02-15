@@ -1,8 +1,9 @@
+import os
+import glob
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.utils.model_zoo as model_zoo
-import os
 """This module provides a nn.Module wrapper and some standard model
 architectures.
 
@@ -37,6 +38,8 @@ class Model(nn.Module):
             self.weights_url = kwargs.pop("weights_url")
         if "name" in kwargs:
             self.name = kwargs.pop("name")
+        if "save_dir" in kwargs:
+            self.save_dir = kwargs.pop("save_dir")
 
     def change_last_fcn(self, num_classes=10, layer=None):
         """Modifies the last fully connected layer for transfer learning.
@@ -90,7 +93,7 @@ class Model(nn.Module):
         for p in params:
             p.requires_grad = False
 
-    def load(self, name=None, save_dir="models"):
+    def load(self, name=None, save_dir=None, save_path=None):
         """Attemps to load a state of the model.
 
         This function does not support the loading of additional
@@ -99,21 +102,31 @@ class Model(nn.Module):
 
         Args:
             name (str, optional): Filename.
-            save_dir (str, optional): Directory to look for data.
-                Defaults to "models".
+            save_dir (str, optional): Directory to look for model.
+                Defaults to self.save_dir (which by default is 'models').
+            save_path (str, optional): Filepath to saved model.
         """
-        if name is None:
-            name = self.name
-        save_path = os.path.join(save_dir, name)
+        if save_path is None:
+            if name is None:
+                name = self.name
+            if save_dir is None:
+                save_dir = self.save_dir
+            save_path = os.path.join(save_dir, name)
 
-        if not (os.path.isfile(save_path) or
-                os.path.isfile(save_path+".pk")):
-            print("No saved model under", name+".pk")
+        possible_models = glob.glob(f'{_remove_ext(save_path)}[*]')
+        if len(possible_models) > 0:
+            print(f'Found {len(possible_models)} possible models')
+            print("Please enter a name to load")
+            name = input("Name: ")
+            while name == "":
+                print("Empty string. Try again.")
+                name = input("Name: ")
+
+        if not (os.path.isfile(_add_ext(save_path))):
+            print("No saved model under", _add_ext(save_path))
             return
 
-        # Check if path has extension
-        if os.path.isfile(save_path+".pk"):
-            save_path += ".pk"
+        save_path = _add_ext(save_path)
 
         checkpoint = torch.load(save_path)
         self.load_state_dict(checkpoint['model_state_dict'])
@@ -130,7 +143,8 @@ class Model(nn.Module):
         """Saves a state of the model.
 
         If a checkpoint dict is passed, the epoch number will be appended
-        to the filename, e.g. alexnet.pk < alexnet_epoch1.pk.
+        to the filename, e.g. alexnet.pk < alexnet_epoch1.pk. If no name
+        or save_dir is provided the user will be prompted to enter them.
 
         Args:
             name (str, optional): Model identifier or filename.
@@ -165,10 +179,10 @@ class Model(nn.Module):
                 print("No save directory given and no default save directory \
                        exists for this model.")
                 print("Please enter a name to save to")
-                name = input("Save directory: ")
-                while name == "":
+                save_dir = input("Save directory: ")
+                while save_dir == "":
                     print("Empty string. Try again.")
-                    name = input("Save directory: ")
+                    save_dir = input("Save directory: ")
 
         if not os.path.exists(save_dir):
             print("Folder does not exist, would you like to create it?")
@@ -191,19 +205,16 @@ class Model(nn.Module):
             if "epoch" in save_obj:
                 save_path += "_epoch"+str(save_obj["epoch"])
 
-        if not overwrite and (os.path.isfile(save_path) or
-                              os.path.isfile(save_path+".pk")):
+        if not overwrite and os.path.isfile(_add_ext(save_path)):
             print("File exists, adding number to filename prevent overwriting")
             i = 1
             n_save_path = save_path + "(" + str(i) + ")"
-            while (os.path.isfile(n_save_path) or
-                   os.path.isfile(n_save_path+".pk")):
+            while os.path.isfile(_add_ext(n_save_path)):
                 i += 1
                 n_save_path = save_path + "(" + str(i) + ")"
             save_path = n_save_path
 
-        if os.path.splitext(save_path)[-1] != ".pk":
-            save_path += ".pk"
+        save_path = _add_ext(save_path)
 
         torch.save(save_obj, save_path)
         print("Successfully saved at " + save_path)
@@ -411,6 +422,18 @@ class Discriminator(Model):
 
     def forward(self, x):
         return self.discriminate(x)
+
+
+def _add_ext(path, ext='.pk'):
+    if path[len(path)-3:] != ext:
+        path += ext
+    return path
+
+
+def _remove_ext(path, ext='.pk'):
+    if path[len(path)-3:] == ext:
+        path = path[:len(path)-3]
+    return path
 
 
 if __name__ == "__main__":
