@@ -123,7 +123,12 @@ def mnistrot(batch_size=32, num_workers=0, transform=None, dir='../data/mnistrot
         tuple: Class labels.
     """
     classes = ("0", "1", "2", "3", "4", "5", "6", "7", "8", "9")
+    transform = [
+                    transforms.ToTensor(),
+                    transforms.Normalize((0.1307,), (0.3081,))
+                ]
 
+    transform = transforms.Compose(transform)
     if test:
         dataloader = torch.utils.data.DataLoader(
             MNISTRot(dir, test=True, transform=transform),

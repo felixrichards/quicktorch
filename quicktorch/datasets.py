@@ -9,6 +9,9 @@ import glob
 import numpy as np
 from .customtransforms import MakeCategorical
 from .utils import download
+
+# deleteme
+import matplotlib.pyplot as plt
 """This module provides wrappers for loading custom datasets.
 """
 
@@ -152,13 +155,15 @@ class MNISTRot(Dataset):
             self.data, self.targets = self.data[indices], self.targets[indices]
 
     def __getitem__(self, i):
+        # print(self.targets[i])
+        # print(MakeCategorical()(self.targets[i]))
         img, target = self.data[i], MakeCategorical()(self.targets[i])
         img = Image.fromarray(img.numpy(), mode='L')
 
         if self.transform is not None:
             img = self.transform(img)
 
-        return transforms.ToTensor()(img), target
+        return img, target
 
     def __len__(self):
         return len(self.data)
@@ -177,8 +182,11 @@ class MNISTRot(Dataset):
         for raw_name, data_file in zip(raw_names, data_files):
             data = np.loadtxt(os.path.join(self.dir, 'raw', raw_name))
             targets = data[:, -1]
+            targets = targets
             imgs = np.delete(data, 28 * 28, 1)
             imgs = np.reshape(imgs, (imgs.shape[0], 28, 28))
+            imgs = np.transpose(imgs, (0, 2 , 1))
+            imgs = (255 * imgs).astype('uint8')
 
             targets = torch.tensor(targets)
             imgs = torch.tensor(imgs)
