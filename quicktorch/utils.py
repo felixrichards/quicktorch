@@ -253,7 +253,7 @@ def train(net, input, criterion='default',
             'recall': best_recall.item()}
 
 
-def evaluate(net, input):
+def evaluate(net, input, device='cpu'):
     """Evaluates a model on a given input
     """
     net.eval()
@@ -277,7 +277,7 @@ def evaluate(net, input):
 
     for i, data in enumerate(input, 0):
         # Run training process
-        output = net(data[0])
+        output = net(data[0].to(device))
         running_samples += data[0].size(0)
 
         if data[0].size() == data[1].size():
