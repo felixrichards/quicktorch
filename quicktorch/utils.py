@@ -1,8 +1,12 @@
+import os
+from urllib.parse import urlparse
+from urllib.request import urlopen
+import zipfile
+import time
 import torch
 import torch.nn as nn
 import torch.optim as optim
 import torchvision
-import time
 import matplotlib.pyplot as plt
 import numpy as np
 from .vis import TrainPlot
@@ -135,7 +139,7 @@ def train(net, input, criterion='default',
             accuracy = 0.
             precision = 0.
             recall = 0.
-            if N is not 0:
+            if N != 0:
                 confusion = torch.zeros(N, N)
             else:
                 confusion = None
@@ -247,6 +251,68 @@ def train(net, input, criterion='default',
             'epoch': best_epoch,
             'precision': best_precision.item(),
             'recall': best_recall.item()}
+
+
+def evaluate(net, input):
+    """Evaluates a model on a given input
+    """
+    net.eval()
+    size = len(input.dataset)
+    b_size = input.batch_size
+
+    N = len(input.dataset[0][1])
+    running_samples = 0
+    accuracy = 0.
+    precision = 0.
+    recall = 0.
+    if N != 0:
+        confusion = torch.zeros(N, N)
+    else:
+        confusion = None
+
+    # Print progress every 10th of batch size
+    print_iter = int(size / b_size / 10)
+    if print_iter == 0:
+        print_iter += 1
+
+    for i, data in enumerate(input, 0):
+        # Run training process
+        output = net(data[0])
+        running_samples += data[0].size(0)
+
+        if data[0].size() == data[1].size():
+            accuracy = ((i * accuracy + 10 * log10(1 / loss.item())) /
+                        (i + 1))
+        else:
+            out_idx = output.max(dim=1)[1]
+            lbl_idx = data[1].max(dim=1)[1]
+            if confusion is not None:
+                for j, k in zip(out_idx, lbl_idx):
+                    confusion[j, k] += 1
+            corr = confusion.diag()
+            accuracy = corr.sum() / confusion.sum()
+            precision = (corr / confusion.sum(1)).mean()
+            recall = (corr / confusion.sum(0)).mean()
+
+        # Print progress
+        if i % print_iter == print_iter - 1:
+            print('Iter [{}/{}] '
+                    'Acc: {:.4f}. '
+                    'Precision: {:.4f}. '
+                    'Recall: {:.4f}. '
+                    .format(
+                    i, size//b_size,
+                    accuracy,
+                    precision,
+                    recall))
+    print('---')
+    print('Final results.')
+    print('---')
+    print('Acc: {:.4f}. Precision: {:.4f}. Recall: {:.4f}.'
+          .format(accuracy, precision, recall))
+    return {'accuracy': accuracy,
+            'precision': precision,
+            'recall': recall}
 
 
 def train_gan(netG, netD, input, criterion='default',
@@ -477,6 +543,30 @@ def force_cpu(*tensors):
     for t in tensors:
         if isinstance(t, torch.Tensor):
             t.cpu().detach()
+
+
+def download(url, dir, name=None, extract=True):
+    urlpath = urlparse(url).path
+    dlname = urlpath.split('/')[-1]
+    if name is None:
+        name = dlname
+
+    if not os.path.isdir(dir):
+        os.mkdir(dir)
+    save_path = os.path.join(dir, name)
+    request = urlopen(url)
+    with open(save_path, 'wb') as f:
+        f.write(request.read())
+    print("Downloaded " + url + " to " + save_path)
+    if extract:
+        print('Extracting')
+        if _get_ext(dlname) == '.zip':
+            with zipfile.ZipFile(save_path, "r") as zip_ref:
+                zip_ref.extractall(dir)
+
+
+def _get_ext(s):
+    return '.' + s.split('.')[-1]
 
 
 def main():

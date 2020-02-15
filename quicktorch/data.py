@@ -2,7 +2,7 @@ import torch
 import torchvision
 from torchvision import transforms
 from .customtransforms import ConvertType, MakeCategorical
-from .datasets import MaskDataset
+from .datasets import MaskDataset, MNISTRot
 """
 This module contains functions that heavily abstract the
 dataset loading process for some famous datasets.
@@ -56,9 +56,9 @@ def cifar(alexnet=False, batch_size=4):
     return trainloader, testloader, classes
 
 
-def mnist(batch_size=32, rotate=False, num_workers=0):
+def mnist(dir='../data/mnist', batch_size=32, rotate=False, num_workers=0):
     """
-    Loads the CIFAR10 dataset.
+    Loads the MNIST dataset.
 
     Args:
         batch_size (int, optional): Batch size for the DataLoader.
@@ -83,13 +83,13 @@ def mnist(batch_size=32, rotate=False, num_workers=0):
     target_transform = MakeCategorical()
 
     trainloader = torch.utils.data.DataLoader(
-        torchvision.datasets.MNIST('../data', train=True, download=True,
+        torchvision.datasets.MNIST(dir, train=True, download=True,
                                    transform=transform,
                                    target_transform=target_transform),
         batch_size=batch_size, shuffle=True,
         pin_memory=True, num_workers=num_workers)
     testloader = torch.utils.data.DataLoader(
-        torchvision.datasets.MNIST('../data', train=False, transform=transform,
+        torchvision.datasets.MNIST(dir, train=False, transform=transform,
                                    target_transform=target_transform),
         batch_size=batch_size, shuffle=True,
         pin_memory=True, num_workers=num_workers)
@@ -97,6 +97,54 @@ def mnist(batch_size=32, rotate=False, num_workers=0):
     classes = ("0", "1", "2", "3", "4", "5", "6", "7", "8", "9")
 
     return trainloader, testloader, classes
+
+def mnistrot(batch_size=32, num_workers=0, transform=None, dir='../data/mnistrot/', test=False, split=None):
+    """
+    Loads the MNISTrot dataset.
+
+    Args:
+        batch_size (int, optional): Batch size for the DataLoader.
+            Defaults to 32.
+        num_workers (int, optional): Number of workers given for DataLoader.
+        dir (str, optional): Directory to load data from. Will download
+            data into directory if it does not exist.
+        test (bool, optional): Whether to load the testing dataset.
+            Defaults to False.
+        transforms (list, optional): Transforms to apply to images.
+        split (bool, optional): split indices used to generate
+            training/validation samples.
+
+    Returns:
+        torch.utils.data.DataLoader: Contains the training dataset.
+        torch.utils.data.DataLoader: Contains the testing dataset.
+        tuple: Class labels.
+    """
+    classes = ("0", "1", "2", "3", "4", "5", "6", "7", "8", "9")
+
+    if test:
+        dataloader = torch.utils.data.DataLoader(
+            MNISTRot(dir, test=True, transform=transform),
+            batch_size=batch_size, shuffle=True,
+            pin_memory=True, num_workers=num_workers
+        )
+        return dataloader, classes
+    else:
+        if split is None:
+            split = [
+                torch.arange(10000),
+                torch.arange(10000, 12000)
+            ]
+        trainloader = torch.utils.data.DataLoader(
+            MNISTRot(dir, test=False, indices=split[0], transform=transform),
+            batch_size=batch_size, shuffle=True,
+            pin_memory=True, num_workers=num_workers
+        )
+        testloader = torch.utils.data.DataLoader(
+            MNISTRot(dir, test=False, indices=split[1], transform=transform),
+            batch_size=batch_size, shuffle=True,
+            pin_memory=True, num_workers=num_workers
+        )
+        return trainloader, testloader, classes
 
 
 def clouds(image_dir='./clouds/swimseg/images/',

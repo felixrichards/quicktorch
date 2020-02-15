@@ -1,3 +1,4 @@
+import torch
 from torchvision import transforms
 from torch.utils.data.dataset import Dataset
 import pandas as pd
@@ -7,6 +8,7 @@ import PIL.Image as Image
 import glob
 import numpy as np
 from .customtransforms import MakeCategorical
+from .utils import download
 """This module provides wrappers for loading custom datasets.
 """
 
@@ -93,3 +95,97 @@ class MaskDataset(Dataset):
 
     def __len__(self):
         return len(self.image_paths)
+
+
+class MNISTRot(Dataset):
+    """Loads MNISTRot dataset from file.
+
+    Will download and extract if it does not exist.
+
+    After extracting the dataset is contained in an 'amat' file, in which
+    data is stored as text where each line contains 28x28+1 floats. The first
+    28x28 are the image, the last is the label.
+
+    Args:
+        dir (str, optional): Directory to load data from. Will download data into
+            directory if it does not exist.
+        test (bool, optional): Whether to load the testing dataset. Defaults to False.
+        transforms (list, optional): Transforms to apply to images.
+        indices (arraylike, optional): Indices of samples to form dataset from.
+    """
+
+    url = ('http://www.iro.umontreal.ca/'
+           '~lisa/icml2007data/mnist_rotation_new.zip')
+    dlname = 'mnist_rotation_new.zip'
+    raw_train_name = 'mnist_all_rotation_normalized_float_train_valid.amat'
+    raw_test_name = 'mnist_all_rotation_normalized_float_test.amat'
+    train_file = 'train.pt'
+    test_file = 'test.pt'
+
+    def __init__(self, dir='../data/mnistrot', test=False, indices=None,
+                 transform=None):
+        self.dir = dir
+        self.transform = transform
+        self.test = test
+
+        if not os.path.isdir(dir):
+            os.mkdir(dir)
+        if not os.path.isdir(os.path.join(dir, 'raw')):
+            os.mkdir(os.path.join(dir, 'raw'))
+        if not os.path.exists(os.path.join(dir, 'raw', self.dlname)):
+            print('MNISTrot raw data not found. Attempting to download.')
+            self.download()
+
+        if self.test:
+            data_file = self.test_file
+        else:
+            data_file = self.train_file
+
+        if not os.path.isdir(os.path.join(dir, 'processed')):
+            os.mkdir(os.path.join(dir, 'processed'))
+        if not os.path.exists(os.path.join(dir, 'processed', data_file)):
+            print('MNISTrot processed data not found. Attempting to create.')
+            self.process()
+
+        self.data, self.targets = torch.load(os.path.join(dir, 'processed', data_file))
+        if indices is not None:
+            self.data, self.targets = self.data[indices], self.targets[indices]
+
+    def __getitem__(self, i):
+        img, target = self.data[i], MakeCategorical()(self.targets[i])
+        img = Image.fromarray(img.numpy(), mode='L')
+
+        if self.transform is not None:
+            img = self.transform(img)
+
+        return transforms.ToTensor()(img), target
+
+    def __len__(self):
+        return len(self.data)
+
+    def download(self):
+        print('Downloading')
+        download(self.url, os.path.join(self.dir, 'raw'), extract=True)
+        print('Done')
+
+    def process(self):
+        print('Processing')
+
+        raw_names = (self.raw_test_name, self.raw_train_name)
+        data_files = (self.test_file, self.train_file)
+
+        for raw_name, data_file in zip(raw_names, data_files):
+            data = np.loadtxt(os.path.join(self.dir, 'raw', raw_name))
+            targets = data[:, -1]
+            imgs = np.delete(data, 28 * 28, 1)
+            imgs = np.reshape(imgs, (imgs.shape[0], 28, 28))
+
+            targets = torch.tensor(targets)
+            imgs = torch.tensor(imgs)
+
+            with open(os.path.join(self.dir, 'processed', data_file), 'wb') as f:
+                torch.save((imgs, targets), f)
+
+        print('Done')
+
+
