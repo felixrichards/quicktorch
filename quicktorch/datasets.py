@@ -9,9 +9,6 @@ import glob
 import numpy as np
 from .customtransforms import MakeCategorical
 from .utils import download
-
-# deleteme
-import matplotlib.pyplot as plt
 """This module provides wrappers for loading custom datasets.
 """
 
