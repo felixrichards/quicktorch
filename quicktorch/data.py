@@ -77,7 +77,10 @@ def mnist(dir='../data/mnist', batch_size=32, rotate=False, num_workers=0):
                     transforms.Normalize((0.1307,), (0.3081,))
                 ]
     if rotate:
-        transform.insert(0, transforms.RandomRotation(180))
+        if torchvision.__version__[:3] == '0.5':
+            transform.insert(0, transforms.RandomRotation(180), fill=(0,))
+        else:
+            transform.insert(0, transforms.RandomRotation(180))
 
     transform = transforms.Compose(transform)
     target_transform = MakeCategorical()
