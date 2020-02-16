@@ -3,6 +3,7 @@ from urllib.parse import urlparse
 from urllib.request import urlopen
 import zipfile
 import time
+import tempfile
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -104,6 +105,9 @@ def train(net, input, criterion='default',
             size['val'] = len(input[1].dataset)
             b_size['train'] = input[0].batch_size
             b_size['val'] = input[1].batch_size
+            # Create temp file for storing best model dict
+            temp_model_file = tempfile.NamedTemporaryFile(mode='wb', delete=False)
+            temp_model_file.close()
         else:
             print("Invalid data format")
             return
@@ -232,12 +236,23 @@ def train(net, input, criterion='default',
                     best_precision = torch.tensor(precision)
                     best_recall = torch.tensor(recall)
                     best_epoch = epoch + 1
+                    torch.save(net.state_dict(), temp_model_file.name)
                     if save_best and not save_all:
                         best_checkpoint = checkpoint
+                print('Best results: Epoch: {}. '
+                      'Acc: {:.4f}. '
+                      'Precision: {:.4f}. '
+                      'Recall: {:.4f}. '
+                      .format(
+                          best_epoch, best_accuracy,
+                          best_precision, best_recall))
 
             if save_all:
                 net.save(checkpoint=checkpoint)
 
+    if 'val' in phases and best_checkpoint is not None:
+        net.load_state_dict(torch.load(temp_model_file.name))
+        os.remove(temp_model_file.name)
     # Put model in evaluation mode
     net.eval()
     time_elapsed = time.time() - since
