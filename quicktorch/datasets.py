@@ -1,14 +1,16 @@
+import glob
+import os
+import shutil
 import torch
 from torchvision import transforms
 from torch.utils.data.dataset import Dataset
 import pandas as pd
-import os
 from skimage import io
 import PIL.Image as Image
-import glob
 import numpy as np
 from .customtransforms import MakeCategorical
 from .utils import download
+import scipy.io
 """This module provides wrappers for loading custom datasets.
 """
 
@@ -152,8 +154,6 @@ class MNISTRot(Dataset):
             self.data, self.targets = self.data[indices], self.targets[indices]
 
     def __getitem__(self, i):
-        # print(self.targets[i])
-        # print(MakeCategorical()(self.targets[i]))
         img, target = self.data[i], MakeCategorical()(self.targets[i])
         img = Image.fromarray(img.numpy(), mode='L')
 
@@ -194,3 +194,169 @@ class MNISTRot(Dataset):
         print('Done')
 
 
+class BSD500(Dataset):
+    """Loads BSD500 dataset from file.
+
+    Will download and extract if it does not exist.
+    Data is stored in .mat format.
+
+    Args:
+        dir (str, optional): Directory to load data from. Will download data into
+            directory if it does not exist.
+        test (bool, optional): Whether to load the testing dataset. Defaults to False.
+        transforms (list, optional): Albumentation transforms to apply to images.
+        indices (arraylike, optional): Indices of samples to form dataset from.
+    """
+
+    url = ('http://www.eecs.berkeley.edu/Research/Projects/CS/vision/grouping/BSR/BSR_bsds500.tgz')
+    dlname = 'BSR_bsds500.tgz'
+    data_path = "BSR/BSDS500/data"
+    train_file = 'train.pt'
+    test_file = 'test.pt'
+
+    def __init__(self, dir='../data/bsd500', test=False, indices=None,
+                 transform=None):
+        self.dir = dir
+        self.transform = transform
+        self.test = test
+
+        if not os.path.isdir(dir):
+            os.mkdir(dir)
+        if not os.path.isdir(os.path.join(dir, 'raw')):
+            os.mkdir(os.path.join(dir, 'raw'))
+        print(os.path.join(dir, 'raw', self.dlname))
+        if not os.path.exists(os.path.join(dir, 'raw', self.dlname)):
+            print('BSD500 raw data not found. Attempting to download.')
+            self.download()
+
+        phase = 'test' if test else 'train'
+
+        if not os.path.isdir(os.path.join(dir, 'processed')):
+            print('BSD500 processed data not found. Attempting to create.')
+            self.process()
+
+        self.img_paths = [
+            img for img in glob.glob(os.path.join(self.dir, 'processed', phase, 'images', '*.jpg'))
+        ]
+        self.mask_paths = [
+            img for img in glob.glob(os.path.join(self.dir, 'processed', phase, 'labels', '*.png'))
+        ]
+        if indices is not None:
+            self.img_paths, self.mask_paths = self.img_paths[indices], self.mask_paths[indices]
+
+    def __getitem__(self, i):
+        img = np.array(Image.open(self.img_paths[i]))
+        label = np.array(Image.open(self.mask_paths[i]))
+        print(img.shape, label.shape)
+
+        if self.transform is not None:
+            t = self.transform(image=img, mask=label)
+            img = t['image']
+            label = t['mask']
+        label = np.expand_dims(label, axis=2)
+        print(img.shape, label.shape)
+        return (
+            transforms.ToTensor()(img),
+            transforms.ToTensor()(label)
+        )
+
+    def __len__(self):
+        return len(self.data)
+
+    def download(self):
+        print('Downloading')
+        download(self.url, os.path.join(self.dir, 'raw'), extract=True)
+        print('Done')
+
+    def process(self):
+        print('Processing')
+        os.mkdir(os.path.join(dir, 'processed'))
+        os.mkdir(os.path.join(dir, 'processed', 'train'))
+        os.mkdir(os.path.join(dir, 'processed', 'test'))
+        os.mkdir(os.path.join(dir, 'processed', 'train', 'images'))
+        os.mkdir(os.path.join(dir, 'processed', 'train', 'labels'))
+        os.mkdir(os.path.join(dir, 'processed', 'test', 'images'))
+        os.mkdir(os.path.join(dir, 'processed', 'test', 'labels'))
+
+        from_tos = (
+            ('train', 'train'),
+            ('val', 'train'),
+            ('test', 'test')
+        )
+
+        for from_dir, to_dir in from_tos:
+            self._move_images(os.path.join(self.data_path, "images", from_dir), to_dir)
+            self._convert_mat_to_png(os.path.join(self.data_path, "groundTruth", from_dir), to_dir)
+        print('Done')
+
+    
+    def _move_images(self, from_dir, to_dir):
+        for f in glob.glob(os.path.join(self.dir, 'raw', from_dir, "*.jpg")):
+            shutil.copy(f, os.path.join(self.dir, 'processed', to_dir, 'images'))
+
+    def _convert_mat_to_png(self, from_dir, to_dir, aggregation='weighted'):
+        for f in glob.glob(os.path.join(self.dir, 'raw', from_dir, "*.mat")):
+            name = os.path.split(f)[-1]
+            name = name[:len(name)-4] + '.png'
+            gts = scipy.io.loadmat(f)
+            gts = gts['groundTruth']
+            gts = np.array([gts[0,i][0,0][1] for i in range(gts.shape[1])])
+            if aggregation == 'weighted':
+                gts = gts.mean(axis=0)
+            gts = (gts * 255).astype('uint8')
+            Image.fromarray(gts).save(os.path.join(self.dir, 'processed', to_dir, 'labels', name))
+
+
+class EMDataset(Dataset):
+    """Loads ISBI EM dataset from file.
+
+    Args:
+        img_dir (str): Path to dataset directory.
+        transform (Trasform, optional): Albumentation transform(s) to apply
+            to images/masks.
+        aug_mult (int, optional): Factor to increase dataset by with
+            augmentations.
+        indices (arraylike, optional): Indices of data samples to form dataset
+            from.
+    """
+    def __init__(self, img_dir,
+                 transform=None, aug_mult=4, indices=None):
+        self.em_paths = [
+            img for img in glob.glob(os.path.join(img_dir, 'volume/*.png'))
+        ]
+        self.mask_paths = [
+            img for img in glob.glob(os.path.join(img_dir, 'labels/*.png'))
+        ]
+
+        self.test = False
+        if len(self.mask_paths) == 0 and len(self.em_paths) > 0:
+            self.test = True
+
+        self.transform = transform
+        self.aug_mult = aug_mult
+        if indices is not None:
+            self.em_paths = [self.em_paths[i] for i in indices]
+            if not self.test:
+                self.mask_paths = [self.mask_paths[i] for i in indices]
+
+    def __getitem__(self, i):
+        i = i // self.aug_mult
+        em = np.array(Image.open(self.em_paths[i]))
+        if self.test:
+            mask = np.zeros_like(em)
+        else:
+            mask = np.array(Image.open(self.mask_paths[i]))
+
+        if self.transform is not None:
+            t = self.transform(image=em, mask=mask)
+            em = t['image']
+            mask = t['mask']
+        em = np.expand_dims(em, axis=2)
+        mask = np.expand_dims(mask, axis=2)
+        return (
+            transforms.ToTensor()(em),
+            transforms.ToTensor()(mask)
+        )
+
+    def __len__(self):
+        return len(self.em_paths) * self.aug_mult

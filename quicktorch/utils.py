@@ -2,6 +2,7 @@ import os
 from urllib.parse import urlparse
 from urllib.request import urlopen
 import zipfile
+import tarfile
 import time
 import tempfile
 import torch
@@ -578,6 +579,10 @@ def download(url, dir, name=None, extract=True):
         if _get_ext(dlname) == '.zip':
             with zipfile.ZipFile(save_path, "r") as zip_ref:
                 zip_ref.extractall(dir)
+        if _get_ext(dlname) == '.tgz':
+            with tarfile.open(save_path) as tar:
+                for item in tar:
+                    tar.extract(item, dir)
 
 
 def _get_ext(s):
