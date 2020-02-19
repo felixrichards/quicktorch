@@ -9,7 +9,7 @@ dataset loading process for some famous datasets.
 """
 
 
-def cifar(alexnet=False, batch_size=4):
+def cifar(alexnet=False, batch_size=4, hundred=False):
     """
     Loads the CIFAR10 dataset.
 
@@ -38,20 +38,28 @@ def cifar(alexnet=False, batch_size=4):
         MakeCategorical(10)
     ])
 
-    trainset = torchvision.datasets.CIFAR10(root='./data', train=True,
-                                            download=True, transform=transform,
-                                            target_transform=target_transform)
-    testset = torchvision.datasets.CIFAR10(root='./data', train=False,
-                                           download=True, transform=transform,
-                                           target_transform=target_transform)
+    if hundred:
+        Dataset = torchvision.datasets.CIFAR100
+    else:
+        Dataset = torchvision.datasets.CIFAR10
+
+    trainset = Dataset(root='./data', train=True,
+                       download=True, transform=transform,
+                       target_transform=target_transform)
+    testset = Dataset(root='./data', train=False,
+                      download=True, transform=transform,
+                      target_transform=target_transform)
 
     trainloader = torch.utils.data.DataLoader(trainset, batch_size=batch_size,
                                               shuffle=True)
     testloader = torch.utils.data.DataLoader(testset, batch_size=batch_size,
                                              shuffle=False)
 
-    classes = ('plane', 'car', 'bird', 'cat',
-               'deer', 'dog', 'frog', 'horse', 'ship', 'truck')
+    if not hundred:
+        classes = ('plane', 'car', 'bird', 'cat',
+                'deer', 'dog', 'frog', 'horse', 'ship', 'truck')
+    else:
+        classes = None
 
     return trainloader, testloader, classes
 
@@ -101,7 +109,8 @@ def mnist(dir='../data/mnist', batch_size=32, rotate=False, num_workers=0):
 
     return trainloader, testloader, classes
 
-def mnistrot(batch_size=32, num_workers=0, transform=None, dir='../data/mnistrot/', test=False, split=None):
+def mnistrot(batch_size=32, num_workers=0, transform=None, dir='../data/mnistrot/',
+             test=False, split=None, rotate=False):
     """
     Loads the MNISTrot dataset.
 
@@ -127,6 +136,12 @@ def mnistrot(batch_size=32, num_workers=0, transform=None, dir='../data/mnistrot
                     transforms.ToTensor(),
                     transforms.Normalize((0.1307,), (0.3081,))
                 ]
+
+    if rotate:
+        if torchvision.__version__[:3] == '0.5':
+            transform.insert(0, transforms.RandomRotation(180), fill=(0,))
+        else:
+            transform.insert(0, transforms.RandomRotation(180))
 
     transform = transforms.Compose(transform)
     if test:
