@@ -155,9 +155,9 @@ class MNISTRot(Dataset):
 
     def __getitem__(self, i):
         img, target = self.data[i], MakeCategorical()(self.targets[i])
-        img = Image.fromarray(img.numpy(), mode='L')
 
         if self.transform is not None:
+            img = Image.fromarray(img.numpy(), mode='L')
             img = self.transform(img)
 
         return img, target
