@@ -211,8 +211,6 @@ class BSD500(Dataset):
     url = ('http://www.eecs.berkeley.edu/Research/Projects/CS/vision/grouping/BSR/BSR_bsds500.tgz')
     dlname = 'BSR_bsds500.tgz'
     data_path = "BSR/BSDS500/data"
-    train_file = 'train.pt'
-    test_file = 'test.pt'
 
     def __init__(self, dir='../data/bsd500', test=False, indices=None,
                  transform=None):
@@ -247,14 +245,21 @@ class BSD500(Dataset):
     def __getitem__(self, i):
         img = np.array(Image.open(self.img_paths[i]))
         label = np.array(Image.open(self.mask_paths[i]))
-        print(img.shape, label.shape)
+
+        rot = False
+        if img.shape[0] > img.shape[1]:
+            rot = True
+            img, label = np.rot90(img), np.rot90(label)
 
         if self.transform is not None:
             t = self.transform(image=img, mask=label)
             img = t['image']
             label = t['mask']
         label = np.expand_dims(label, axis=2)
-        print(img.shape, label.shape)
+
+        if rot:
+            img, label = np.rot90(img, 3), np.rot90(label, 3)
+
         return (
             transforms.ToTensor()(img),
             transforms.ToTensor()(label)
