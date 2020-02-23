@@ -86,7 +86,7 @@ def mnist(dir='../data/mnist', batch_size=32, rotate=False, num_workers=0):
                 ]
     if rotate:
         if torchvision.__version__[:3] == '0.5':
-            transform.insert(0, transforms.RandomRotation(180), fill=(0,))
+            transform.insert(0, transforms.RandomRotation(180, fill=(0,)))
         else:
             transform.insert(0, transforms.RandomRotation(180))
 
@@ -139,7 +139,7 @@ def mnistrot(batch_size=32, num_workers=0, transform=None, dir='../data/mnistrot
 
     if rotate:
         if torchvision.__version__[:3] == '0.5':
-            transform.insert(0, transforms.RandomRotation(180), fill=(0,))
+            transform.insert(0, transforms.RandomRotation(180, fill=(0,)))
         else:
             transform.insert(0, transforms.RandomRotation(180))
 
