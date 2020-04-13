@@ -240,16 +240,17 @@ class BSD500(Dataset):
             img for img in glob.glob(os.path.join(self.dir, 'processed', phase, 'labels', '*.png'))
         ]
         if indices is not None:
-            self.img_paths, self.mask_paths = self.img_paths[indices], self.mask_paths[indices]
+            self.img_paths = [self.img_paths[i] for i in indices]
+            self.mask_paths = [self.mask_paths[i] for i in indices]
 
     def __getitem__(self, i):
         img = np.array(Image.open(self.img_paths[i]))
         label = np.array(Image.open(self.mask_paths[i]))
 
-        rot = False
+        rot = False # Rotate to normalise portrait to landscape
         if img.shape[0] > img.shape[1]:
             rot = True
-            img, label = np.rot90(img), np.rot90(label)
+            img, label = np.rot90(img, -1), np.rot90(label, -1)
 
         if self.transform is not None:
             t = self.transform(image=img, mask=label)
@@ -257,16 +258,18 @@ class BSD500(Dataset):
             label = t['mask']
         label = np.expand_dims(label, axis=2)
 
-        if rot:
-            img, label = np.rot90(img, 3), np.rot90(label, 3)
+        # This forces batches to have different irregular dimenions
+        # TODO figure out collate function that can handle this
+        # if rot: # Unrotate portrait images
+        #     img, label = np.rot90(img, -1), np.rot90(label, -1)
 
         return (
-            transforms.ToTensor()(img),
-            transforms.ToTensor()(label)
+            transforms.ToTensor()(img.copy()),
+            transforms.ToTensor()(label.copy())
         )
 
     def __len__(self):
-        return len(self.data)
+        return len(self.img_paths)
 
     def download(self):
         print('Downloading')
@@ -275,13 +278,13 @@ class BSD500(Dataset):
 
     def process(self):
         print('Processing')
-        os.mkdir(os.path.join(dir, 'processed'))
-        os.mkdir(os.path.join(dir, 'processed', 'train'))
-        os.mkdir(os.path.join(dir, 'processed', 'test'))
-        os.mkdir(os.path.join(dir, 'processed', 'train', 'images'))
-        os.mkdir(os.path.join(dir, 'processed', 'train', 'labels'))
-        os.mkdir(os.path.join(dir, 'processed', 'test', 'images'))
-        os.mkdir(os.path.join(dir, 'processed', 'test', 'labels'))
+        os.mkdir(os.path.join(self.dir, 'processed'))
+        os.mkdir(os.path.join(self.dir, 'processed', 'train'))
+        os.mkdir(os.path.join(self.dir, 'processed', 'test'))
+        os.mkdir(os.path.join(self.dir, 'processed', 'train', 'images'))
+        os.mkdir(os.path.join(self.dir, 'processed', 'train', 'labels'))
+        os.mkdir(os.path.join(self.dir, 'processed', 'test', 'images'))
+        os.mkdir(os.path.join(self.dir, 'processed', 'test', 'labels'))
 
         from_tos = (
             ('train', 'train'),

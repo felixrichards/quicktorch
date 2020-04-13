@@ -132,10 +132,19 @@ def mnistrot(batch_size=32, num_workers=0, transform=None, dir='../data/mnistrot
         tuple: Class labels.
     """
     classes = ("0", "1", "2", "3", "4", "5", "6", "7", "8", "9")
-    transform = [
+    norm_transform = [
                     transforms.ToTensor(),
                     transforms.Normalize((0.1307,), (0.3081,))
                 ]
+    if transform is not None:
+        if type(transform) is not list:
+            transform = [transform]
+        transform = [
+            *transform,
+            *norm_transform
+        ]
+    else:
+        transform = norm_transform
 
     if rotate:
         if torchvision.__version__[:3] == '0.5':
@@ -191,12 +200,11 @@ def bsd(batch_size=32, num_workers=0, transform=None, dir='../data/bsd500/',
         torch.utils.data.DataLoader: Contains the training/testing dataset.
         torch.utils.data.DataLoader: Contains the validation dataset if test==false.
     """
-    transform = transforms.Compose(transform)
     if test:
         dataloader = torch.utils.data.DataLoader(
             BSD500(dir, test=True, transform=transform),
             batch_size=batch_size, shuffle=True,
-            pin_memory=True, num_workers=num_workers
+            pin_memory=True, num_workers=num_workers,
         )
         return dataloader
     else:
@@ -208,12 +216,12 @@ def bsd(batch_size=32, num_workers=0, transform=None, dir='../data/bsd500/',
         trainloader = torch.utils.data.DataLoader(
             BSD500(dir, test=False, indices=split[0], transform=transform),
             batch_size=batch_size, shuffle=True,
-            pin_memory=True, num_workers=num_workers
+            pin_memory=True, num_workers=num_workers,
         )
         testloader = torch.utils.data.DataLoader(
             BSD500(dir, test=False, indices=split[1], transform=transform),
             batch_size=batch_size, shuffle=True,
-            pin_memory=True, num_workers=num_workers
+            pin_memory=True, num_workers=num_workers,
         )
         return trainloader, testloader
 

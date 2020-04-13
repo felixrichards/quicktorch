@@ -113,14 +113,18 @@ class Model(nn.Module):
                 save_dir = self.save_dir
             save_path = os.path.join(save_dir, name)
 
-        possible_models = glob.glob(f'{_remove_ext(save_path)}[*]')
-        if len(possible_models) > 0:
-            print(f'Found {len(possible_models)} possible models')
+        possible_models = glob.glob(f'{_remove_ext(save_path)}*')
+        if len(possible_models) == 1:
+            save_path = possible_models[0]
+        if len(possible_models) > 1:
+            print(f'Found {len(possible_models)} possible models:')
+            for pm in possible_models:
+                print(pm)
             print("Please enter a name to load")
-            name = input("Name: ")
-            while name == "":
+            save_path = input("Name: ")
+            while save_path == "":
                 print("Empty string. Try again.")
-                name = input("Name: ")
+                save_path = input("Name: ")
 
         if not (os.path.isfile(_add_ext(save_path))):
             print("No saved model under", _add_ext(save_path))

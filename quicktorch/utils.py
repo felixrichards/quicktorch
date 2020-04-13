@@ -167,7 +167,7 @@ def train(net, input, criterion='default',
                 # print("Full pass done in", time.time() - start)
                 start = time.time()
 
-                if data[0].size() == data[1].size():
+                if data[0].size(-1) == data[1].size(-1) and data[0].size(-2) == data[1].size(-2):
                     with torch.set_grad_enabled(False):
                         accuracy = ((i * accuracy + 10 * log10(1 / loss.item())) /
                                     (i + 1))
@@ -297,6 +297,7 @@ def evaluate(net, input, device='cpu'):
         running_samples += data[0].size(0)
 
         if data[0].size() == data[1].size():
+            loss = nn.MSELoss()(output, data[1].to(device))
             accuracy = ((i * accuracy + 10 * log10(1 / loss.item())) /
                         (i + 1))
         else:
@@ -494,16 +495,18 @@ def imshow(img, lbls=None, classes=None, save_name=None):
     orig_img_size = img.size()
     img = torchvision.utils.make_grid(img)
     if img.min() < 0:
-        img = img / 2 + 0.5     # unnormalize
-    npimg = img.numpy()
+        img = (img - img.min()) / (img.max() - img.min())   # normalize
+    npimg = img.cpu().detach().numpy()
     if lbls is not None:
         if isinstance(lbls, torch.Tensor):
             # Labels are masks
-            if lbls.size() == orig_img_size:
+            if lbls.size(-1) == orig_img_size[-1] and lbls.size(-2) == orig_img_size[-2]:
                 lbls = torchvision.utils.make_grid(lbls)
                 if lbls.min() < 0:
-                    lbls = lbls / 2 + 0.5     # unnormalize
-                nplbls = lbls.numpy()
+                    lbls = (lbls - lbls.min()) / (lbls.max() - lbls.min())     # unnormalize
+                nplbls = lbls.cpu().detach().numpy()
+                if npimg.shape[-3] == 3 and nplbls.shape[-3] == 1:
+                    nplbls = np.repeat(nplbls, 3, -3)
                 npimg = np.hstack((npimg, nplbls))
             # Labels are categorical
             else:
