@@ -13,6 +13,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 from .vis import TrainPlot
 from sklearn.model_selection import KFold
+from sklearn.metrics import jaccard_score
 from skimage import io
 import PIL
 from math import log10
@@ -139,6 +140,15 @@ def train(net, input, criterion='default',
 
         # Loop through phases e.g. ['train', 'val']
         for j, phase in enumerate(phases):
+            if phase == 'train':
+                if isinstance(sch, optim.lr_scheduler.ReduceLROnPlateau):
+                    sch.step(running_loss)
+                else:
+                    sch.step()
+                net.train()
+            else:
+                net.eval()
+            print(f'phase={phase}, net.training={net.training}')
             running_loss = 0.0
             running_samples = 0
             accuracy = 0.
@@ -201,17 +211,6 @@ def train(net, input, criterion='default',
                             precision,
                             recall,
                             avg_time))
-            
-            
-            if sch is not None:
-                if phase == 'train':
-                    if isinstance(sch, optim.lr_scheduler.ReduceLROnPlateau):
-                        sch.step(running_loss)
-                    else:
-                        sch.step()
-                    net.train()
-                else:
-                    net.eval()
 
             epoch_loss = running_loss/size[phase]
             print('Epoch {} complete. Phase: {}. '
@@ -269,7 +268,7 @@ def train(net, input, criterion='default',
             'recall': best_recall.item()}
 
 
-def evaluate(net, input, device='cpu'):
+def evaluate(net, input, device='cpu', report_iou=False):
     """Evaluates a model on a given input
     """
     net.eval()
@@ -281,6 +280,7 @@ def evaluate(net, input, device='cpu'):
     accuracy = 0.
     precision = 0.
     recall = 0.
+    iou = 0.
     if N != 0:
         confusion = torch.zeros(N, N)
     else:
@@ -300,6 +300,10 @@ def evaluate(net, input, device='cpu'):
             loss = nn.MSELoss()(output, data[1].to(device))
             accuracy = ((i * accuracy + 10 * log10(1 / loss.item())) /
                         (i + 1))
+            if report_iou:
+                lbl = data[1].detach().cpu().flatten().numpy()
+                pred = output.detach().cpu().round().flatten().numpy()
+                iou += jaccard_score(lbl, pred)
         else:
             out_idx = output.max(dim=1)[1]
             lbl_idx = data[1].max(dim=1)[1]
@@ -327,9 +331,14 @@ def evaluate(net, input, device='cpu'):
     print('---')
     print('Acc: {:.4f}. Precision: {:.4f}. Recall: {:.4f}.'
           .format(accuracy, precision, recall))
+    print(iou)
+    if iou > 0:
+        iou /= i + 1
+        print('IoU: {:.4f}.'.format(iou))
     return {'accuracy': accuracy,
             'precision': precision,
-            'recall': recall}
+            'recall': recall,
+            'iou': iou}
 
 
 def train_gan(netG, netD, input, criterion='default',
@@ -460,16 +469,12 @@ def _validate_opt_crit(opt, criterion, params):
         if not isinstance(opt[i], optim.Optimizer):
             if opt[i] == 'default':
                 opt[i] = optim.SGD(params[i], lr=0.01)
-            else:
-                raise ValueError('Invalid input for opt')
     opt = tuple(opt)
     if not isinstance(criterion, nn.modules.loss._Loss):
         if criterion == 'default':
             criterion = nn.MSELoss()
         elif criterion == 'bce':
             criterion = nn.BCELoss()
-        else:
-            raise ValueError('Invalid input for criterion')
 
     return (*opt, criterion)
 
