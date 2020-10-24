@@ -1,10 +1,10 @@
+import csv
 import glob
 import os
 import shutil
 import torch
 from torchvision import transforms
 from torch.utils.data.dataset import Dataset
-import pandas as pd
 from skimage import io
 import PIL.Image as Image
 import numpy as np
@@ -13,6 +13,17 @@ from .utils import download
 import scipy.io
 """This module provides wrappers for loading custom datasets.
 """
+
+
+def read_csv(path):
+    reader = csv.DictReader(open(path))
+    out = {key: [] for key in reader.fieldnames}
+
+    for row in reader:
+        for column, value in row.items():
+            out[column].append(value)
+
+    return out
 
 
 class ClassificationDataset(Dataset):
@@ -35,7 +46,7 @@ class ClassificationDataset(Dataset):
     def __init__(self, csv_file, transform=transforms.ToTensor()):
         self.csv_file = csv_file
         self.image_dir = os.path.split(csv_file)[0]
-        csv_data = pd.read_csv(csv_file)
+        csv_data = read_csv(csv_file)
         self.image_paths = [os.path.join(self.image_dir, img)
                             for img in csv_data['imagename']]
 
