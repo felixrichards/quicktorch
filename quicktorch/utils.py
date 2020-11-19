@@ -159,6 +159,8 @@ def train(net, input, criterion='default',
                 running_loss += loss.item()
 
                 metrics.update(output, data[1].to(device))
+                del(output)
+                del(loss)
 
                 # Print progress
                 if i % print_iter == print_iter - 1:
@@ -185,9 +187,9 @@ def train(net, input, criterion='default',
                 checkpoint = {
                     'epoch': epoch+1,
                     'optimizer_state_dict': opt.state_dict(),
-                    'loss': loss
+                    'loss': epoch_loss
                 }
-                checkpoint.update(metrics.metrics)
+                checkpoint.update(metrics.get_metrics())
                 if metrics.is_best():
                     best_epoch = epoch + 1
                     torch.save(net.state_dict(), temp_model_file.name)
@@ -208,7 +210,7 @@ def train(net, input, criterion='default',
     net.eval()
     if save_best and not save_all:
         net.save(checkpoint=best_checkpoint)
-    return metrics.best_metrics
+    return metrics.get_best_metrics()
 
 
 def evaluate(net, input, device='cpu', metrics=None):
@@ -228,8 +230,10 @@ def evaluate(net, input, device='cpu', metrics=None):
 
     for i, data in enumerate(input, 0):
         # Run training process
-        output = net(data[0].to(device))
+        with torch.no_grad():
+            output = net(data[0].to(device))
         metrics.update(output, data[1].to(device))
+        del(output)
 
         # Print progress
         if i % print_iter == print_iter - 1:
@@ -244,7 +248,7 @@ def evaluate(net, input, device='cpu', metrics=None):
     print('Final results.')
     print('---')
     print(metrics.progress_str())
-    return metrics.metrics
+    return metrics.get_metrics()
 
 
 def train_gan(netG, netD, input, criterion='default',
