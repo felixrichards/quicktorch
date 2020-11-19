@@ -3,6 +3,7 @@ import time
 import torch
 import torch.nn as nn
 from sklearn.metrics import jaccard_score
+from collections import OrderedDict
 
 
 def dict2str(dictionary):
@@ -27,13 +28,13 @@ def _is_one_hot(y):
 
 class MetricTracker():
     def __init__(self):
-        self.metrics = {}
-        self.best_metrics = {}
+        self.metrics = OrderedDict()
+        self.best_metrics = OrderedDict()
         self.epoch_count = 0
         self.batch_count = 0
         self.start_time = None
         self.batch_start = None
-        self.stats = {}
+        self.stats = OrderedDict()
 
     def start(self):
         """Starts timer
@@ -61,7 +62,7 @@ class MetricTracker():
         """Updates metrics
         """
         with torch.no_grad():
-            self.metrics.update(self.calculate(output, target))
+            self.calculate(output, target)
         if self.start_time is not None:
             self.stats['avg_time'] = (
                 (self.stats['avg_time'] * self.batch_count + time.time() - self.batch_start) /
@@ -124,6 +125,22 @@ class MetricTracker():
         print('Best epoch: {}'.format(
             self._best_str()))
 
+    def get_metrics(self):
+        return self.typecheck_metrics(self.metrics)
+
+    def get_best_metrics(self):
+        return self.typecheck_metrics(self.best_metrics)
+
+    @classmethod
+    def typecheck_metrics(cls, m):
+        out = OrderedDict()
+        for key, val in m.items():
+            if isinstance(val, torch.Tensor):
+                out[key] = val.item()
+            else:
+                out[key] = val
+        return out
+
     @classmethod
     def detect_metrics(cls, dataset):
         """Attempts to detect the most suitable metric tracker.
@@ -132,6 +149,8 @@ class MetricTracker():
             dataset = dataset[0]
         data = dataset.dataset[0]
         if data[0].size(-1) == data[1].size(-1) and data[0].size(-2) == data[1].size(-2):
+            if len(torch.unique(data[1])) > 2:
+                return DenoisingTracker()
             return SegmentationTracker()
 
         # Get number of classes
@@ -156,11 +175,9 @@ class ClassificationTracker(MetricTracker):
         super().__init__()
         self.n_classes = n_classes
         self.master_metric = "accuracy"
-        self.metrics = {
-            "accuracy": torch.tensor(0.),
-            "precision": torch.tensor(0.),
-            "recall": torch.tensor(0.)
-        }
+        self.metrics["accuracy"] = torch.tensor(0.)
+        self.metrics["precision"] = torch.tensor(0.)
+        self.metrics["recall"] = torch.tensor(0.)
         self.best_metrics = self.metrics.copy()
         self.reset()
 
@@ -178,12 +195,10 @@ class ClassificationTracker(MetricTracker):
             for j, k in zip(out_idx, lbl_idx):
                 self.confusion[j, k] += 1
         corr = self.confusion.diag()
-        metrics = {
-            "accuracy": corr.sum() / self.confusion.sum(),
-            "precision": (corr / self.confusion.sum(1)).mean(),
-            "recall": (corr / self.confusion.sum(0)).mean()
-        }
-        return metrics
+        self.metrics["accuracy"] = corr.sum() / self.confusion.sum()
+        self.metrics["precision"] = (corr / self.confusion.sum(1)).mean()
+        self.metrics["recall"] = (corr / self.confusion.sum(0)).mean()
+        return self.metrics
 
 
 class SegmentationTracker(MetricTracker):
@@ -192,10 +207,8 @@ class SegmentationTracker(MetricTracker):
     def __init__(self):
         super().__init__()
         self.master_metric = "PSNR"
-        self.metrics = {
-            "PSNR": torch.tensor(0.),
-            "IoU": torch.tensor(0.)
-        }
+        self.metrics["PSNR"] = torch.tensor(0.)
+        self.metrics["IoU"] = torch.tensor(0.)
         self.best_metrics = self.metrics.copy()
         self.mse_fn = nn.MSELoss()
         self.reset()
@@ -206,17 +219,42 @@ class SegmentationTracker(MetricTracker):
         mse = self.mse_fn(output, target)
         lbl = target.detach().cpu().flatten().numpy()
         pred = output.detach().cpu().round().flatten().numpy()
-        metrics = {
-            'PSNR': (
-                (self.batch_count * self.metrics['PSNR'] + 10 * math.log10(1 / mse.item())) /
-                (self.batch_count + 1)
-            ),
-            'IoU': (
-                (self.batch_count * self.metrics['IoU'] + jaccard_score(lbl, pred)) /
-                (self.batch_count + 1)
-            )
-        }
-        return metrics
+        pred = self._clip(pred, lbl)
+        self.metrics['PSNR'] = (
+            (self.batch_count * self.metrics['PSNR'] + 10 * math.log10(1 / mse.item())) /
+            (self.batch_count + 1)
+        )
+        self.metrics['IoU'] = (
+            (self.batch_count * self.metrics['IoU'] + jaccard_score(lbl, pred)) /
+            (self.batch_count + 1)
+        )
+        return self.metrics
+
+    @classmethod
+    def _clip(cls, pred, lbl):
+        return pred.clip(lbl.min(), lbl.max())
+
+
+class DenoisingTracker(MetricTracker):
+    """Tracks metrics for denoising performance.
+    """
+    def __init__(self):
+        super().__init__()
+        self.master_metric = "PSNR"
+        self.metrics["PSNR"] = torch.tensor(0.)
+        self.best_metrics = self.metrics.copy()
+        self.mse_fn = nn.MSELoss()
+        self.reset()
+
+    def calculate(self, output, target):
+        """Calculates metrics for given batch
+        """
+        mse = self.mse_fn(output, target)
+        self.metrics['PSNR'] = (
+            (self.batch_count * self.metrics['PSNR'] + 10 * math.log10(1 / mse.item())) /
+            (self.batch_count + 1)
+        )
+        return self.metrics
 
 
 class RegressionTracker(MetricTracker):
@@ -225,9 +263,7 @@ class RegressionTracker(MetricTracker):
     def __init__(self):
         super().__init__()
         self.master_metric = "RMSE"
-        self.metrics = {
-            "RMSE": torch.tensor(0.)
-        }
+        self.metrics["RMSE"] = torch.tensor(0.)
         self.best_metrics = self.metrics.copy()
         self.mse_fn = nn.MSELoss()
         self.reset()
@@ -236,8 +272,8 @@ class RegressionTracker(MetricTracker):
         """Calculates metrics for given batch
         """
         rmse = torch.sqrt(self.mse_fn(output, target))
-        metrics = {'RMSE': (
+        self.metrics['RMSE'] = (
             (self.batch_count * self.metrics['RMSE'] + rmse) /
             (self.batch_count + 1)
-        )}
-        return metrics
+        )
+        return self.metrics
