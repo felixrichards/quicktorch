@@ -68,10 +68,13 @@ class Model(nn.Module):
                 Not required to be passed if set when the class was
                 instantiated.
         """
-        if hasattr(self, 'weights_url'):
-            self.load_state_dict(model_zoo.load_url(self.weights_url))
-        else:
-            print("No weights to load")
+        if weights_url is None:
+            if hasattr(self, 'weights_url'):
+                weights_url = self.weights_url
+            else:
+                print("No weights to load")
+                return
+        self.load_state_dict(model_zoo.load_url(weights_url))
 
     def num_flat_features(self, x):
         """Computes the number of features per sample in an input.
@@ -93,7 +96,7 @@ class Model(nn.Module):
         for p in params:
             p.requires_grad = False
 
-    def load(self, name=None, save_dir=None, save_path=None):
+    def load(self, name=None, save_dir=None, save_path=None, surpress=False):
         """Attemps to load a state of the model.
 
         This function does not support the loading of additional
@@ -105,6 +108,7 @@ class Model(nn.Module):
             save_dir (str, optional): Directory to look for model.
                 Defaults to self.save_dir (which by default is 'models').
             save_path (str, optional): Filepath to saved model.
+            surpress (boolean, optional): Surpress 'helpful' messages.
         """
         if save_path is None:
             if name is None:
@@ -134,13 +138,14 @@ class Model(nn.Module):
 
         checkpoint = torch.load(save_path)
         self.load_state_dict(checkpoint['model_state_dict'])
-        print("Model successfully loaded")
-        del (checkpoint['model_state_dict'])
-        if checkpoint:
-            print("File has other items other than model weights:")
-            for key in checkpoint:
-                print("\t", key)
-            print("Consider loading them with torch.load()")
+        if not surpress:
+            print("Model successfully loaded")
+            del (checkpoint['model_state_dict'])
+            if checkpoint:
+                print("File has other items other than model weights:")
+                for key in checkpoint:
+                    print("\t", key)
+                print("Consider loading them with torch.load()")
 
     def save(self, name=None, overwrite=False, save_dir=None,
              checkpoint=None):
