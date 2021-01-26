@@ -64,7 +64,7 @@ def cifar(alexnet=False, batch_size=4, hundred=False):
     return trainloader, testloader, classes
 
 
-def mnist(dir='../data/mnist', batch_size=32, rotate=False, num_workers=0):
+def mnist(dir='../data/mnist', batch_size=32, rotate=False, num_workers=0, idxs=None):
     """
     Loads the MNIST dataset.
 
@@ -77,8 +77,8 @@ def mnist(dir='../data/mnist', batch_size=32, rotate=False, num_workers=0):
 
     Returns:
         torch.utils.data.DataLoader: Contains the training dataset.
+        torch.utils.data.DataLoader: Contains the validation dataset.
         torch.utils.data.DataLoader: Contains the testing dataset.
-        tuple: Class labels.
     """
     transform = [
                     transforms.ToTensor(),
@@ -93,21 +93,40 @@ def mnist(dir='../data/mnist', batch_size=32, rotate=False, num_workers=0):
     transform = transforms.Compose(transform)
     target_transform = MakeCategorical()
 
+    train_dataset = torchvision.datasets.MNIST(
+        dir,
+        train=True,
+        download=True,
+        transform=transform,
+        target_transform=target_transform
+    )
+
+    if idxs is not None:
+        valid_dataset = torch.utils.data.Subset(train_dataset, idxs[1])
+        train_dataset = torch.utils.data.Subset(train_dataset, idxs[0])
+
     trainloader = torch.utils.data.DataLoader(
-        torchvision.datasets.MNIST(dir, train=True, download=True,
-                                   transform=transform,
-                                   target_transform=target_transform),
-        batch_size=batch_size, shuffle=True,
-        pin_memory=True, num_workers=num_workers)
+        train_dataset,
+        batch_size=batch_size,
+        shuffle=True,
+        pin_memory=True,
+        num_workers=num_workers)
+    if idxs is not None:
+        validloader = torch.utils.data.DataLoader(
+            valid_dataset,
+            batch_size=batch_size,
+            shuffle=True,
+            pin_memory=True,
+            num_workers=num_workers)
+    else:
+        validloader = None
     testloader = torch.utils.data.DataLoader(
         torchvision.datasets.MNIST(dir, train=False, transform=transform,
                                    target_transform=target_transform),
         batch_size=batch_size, shuffle=True,
         pin_memory=True, num_workers=num_workers)
 
-    classes = ("0", "1", "2", "3", "4", "5", "6", "7", "8", "9")
-
-    return trainloader, testloader, classes
+    return trainloader, validloader, testloader
 
 def mnistrot(batch_size=32, num_workers=0, transform=None, dir='../data/mnistrot/',
              test=False, split=None, rotate=False):
@@ -152,19 +171,21 @@ def mnistrot(batch_size=32, num_workers=0, transform=None, dir='../data/mnistrot
         else:
             transform.insert(0, transforms.RandomRotation(180))
 
+    norm_transform = transforms.Compose(norm_transform)
     transform = transforms.Compose(transform)
     if test:
         dataloader = torch.utils.data.DataLoader(
-            MNISTRot(dir, test=True, transform=transform),
+            MNISTRot(dir, test=True, transform=norm_transform),
             batch_size=batch_size, shuffle=True,
             pin_memory=True, num_workers=num_workers
         )
         return dataloader, classes
     else:
         if split is None:
+            idxs = torch.randperm(12000)
             split = [
-                torch.arange(10000),
-                torch.arange(10000, 12000)
+                idxs[:10000],
+                idxs[10000:]
             ]
         trainloader = torch.utils.data.DataLoader(
             MNISTRot(dir, test=False, indices=split[0], transform=transform),
@@ -172,7 +193,7 @@ def mnistrot(batch_size=32, num_workers=0, transform=None, dir='../data/mnistrot
             pin_memory=True, num_workers=num_workers
         )
         testloader = torch.utils.data.DataLoader(
-            MNISTRot(dir, test=False, indices=split[1], transform=transform),
+            MNISTRot(dir, test=False, indices=split[1], transform=norm_transform),
             batch_size=batch_size, shuffle=True,
             pin_memory=True, num_workers=num_workers
         )

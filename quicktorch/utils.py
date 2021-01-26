@@ -3,7 +3,6 @@ from urllib.parse import urlparse
 from urllib.request import urlopen
 import zipfile
 import tarfile
-import time
 import tempfile
 import torch
 import torch.nn as nn
@@ -11,8 +10,10 @@ import torch.optim as optim
 import torchvision
 import matplotlib.pyplot as plt
 import numpy as np
+from .metrics import MetricTracker
 from .vis import TrainPlot
 from sklearn.model_selection import KFold
+from sklearn.metrics import jaccard_score
 from skimage import io
 import PIL
 from math import log10
@@ -37,25 +38,30 @@ def perform_pass(net, data, opt, criterion, device, train=True):
         float: Loss value
         float: Number of correct predictions
     """
-    start = time.time()
     images, labels = data
     images, labels = images.to(device), labels.to(device)
     opt.zero_grad()
     with torch.set_grad_enabled(train):
         output = net(images)
         loss = criterion(output, labels)
-    # print("Forward pass done in", time.time() - start)
-    start = time.time()
     if train:
         loss.backward()
         opt.step()
-        # print("Backward pass done in", time.time() - start)
     return loss, output
+
+
+def _handle_sch(sch, running_loss=None, phase='train'):
+    if phase == 'train':
+        if sch is not None:
+            if isinstance(sch, optim.lr_scheduler.ReduceLROnPlateau):
+                sch.step(running_loss)
+            else:
+                sch.step()
 
 
 def train(net, input, criterion='default',
           epochs=5, opt='default', sch=None,
-          device="cpu",
+          metrics=None, device="cpu",
           save_best=False, save_all=False):
     """Trains a neural network
 
@@ -76,6 +82,9 @@ def train(net, input, criterion='default',
             Defaults to 'default' which translates to SGD.
         sch (torch.optim._LRScheduler, optional): Learning rate scheduling
             function. Defaults to None.
+        metrics (quicktorch.metrics.MetricTracker, optional): Class for tracking
+            metrics. If None attempts to detect suitable metrics from data.
+            Defaults to None.
         device (str, optional): Index of GPU or 'cpu' if no GPU.
             Defaults to 'cpu'.
         save_best (boolean, optional): Saves the model at the best epoch.
@@ -118,19 +127,10 @@ def train(net, input, criterion='default',
         b_size['train'] = input.batch_size
         input = [input]
 
-    # Get number of classes
-    N = 0
-    if hasattr(input[0].dataset, 'num_classes'):
-        N = input[0].dataset.num_classes
-    else:
-        N = len(input[0].dataset[0][1])
+    if metrics is None:
+        metrics = MetricTracker.detect_metrics(input)
 
-    # Record time
-    since = time.time()
-    best_accuracy = torch.tensor(0.)
-    best_precision = torch.tensor(0.)
-    best_recall = torch.tensor(0.)
-    best_epoch = 0
+    metrics.start()
     best_checkpoint = {}
 
     for epoch in range(epochs):
@@ -139,17 +139,12 @@ def train(net, input, criterion='default',
 
         # Loop through phases e.g. ['train', 'val']
         for j, phase in enumerate(phases):
-            running_loss = 0.0
-            running_samples = 0
-            accuracy = 0.
-            precision = 0.
-            recall = 0.
-            if N != 0:
-                confusion = torch.zeros(N, N)
+            if phase == 'train':
+                net.train()
             else:
-                confusion = None
-            iter_start = time.time()
-            avg_time = 0
+                net.eval()
+            print(f'phase={phase}, net.training={net.training}')
+            running_loss = 0.0
 
             # Print progress every 10th of batch size
             print_iter = int(size[phase] / b_size[phase] / 10)
@@ -158,118 +153,69 @@ def train(net, input, criterion='default',
 
             for i, data in enumerate(input[j], 0):
                 # Run training process
-                start = time.time()
                 loss, output = perform_pass(net, data, opt,
                                             criterion, device,
                                             phase == 'train')
                 running_loss += loss.item()
-                running_samples += data[0].size(0)
-                # print("Full pass done in", time.time() - start)
-                start = time.time()
 
-                if data[0].size(-1) == data[1].size(-1) and data[0].size(-2) == data[1].size(-2):
-                    with torch.set_grad_enabled(False):
-                        accuracy = ((i * accuracy + 10 * log10(1 / loss.item())) /
-                                    (i + 1))
-                else:
-                    out_idx = output.max(dim=1)[1]
-                    lbl_idx = data[1].max(dim=1)[1]
-                    if confusion is not None:
-                        for j, k in zip(out_idx, lbl_idx):
-                            confusion[j, k] += 1
-                    corr = confusion.diag()
-                    accuracy = corr.sum() / confusion.sum()
-                    precision = (corr / confusion.sum(1)).mean()
-                    recall = (corr / confusion.sum(0)).mean()
-
-                # Update avg iteration time
-                iter_end = time.time()
-                avg_time = (avg_time*i+iter_end-iter_start)/(i+1)
-                iter_start = iter_end
+                metrics.update(output, data[1].to(device))
+                del(output)
+                del(loss)
 
                 # Print progress
                 if i % print_iter == print_iter - 1:
                     print('Epoch [{}/{}]. Iter [{}/{}]. Loss: {:.4f}. '
-                          'Acc: {:.4f}. '
-                          'Precision: {:.4f}. '
-                          'Recall: {:.4f}. '
-                          'Avg time/iter: {:.4f}. '
+                          '{} '
+                          '{} '
                           .format(
                             epoch+1, epochs, i, size[phase]//b_size[phase],
                             running_loss/((i+1)*b_size[phase]),
-                            accuracy,
-                            precision,
-                            recall,
-                            avg_time))
-            
-            
-            if sch is not None:
-                if phase == 'train':
-                    if isinstance(sch, optim.lr_scheduler.ReduceLROnPlateau):
-                        sch.step(running_loss)
-                    else:
-                        sch.step()
-                    net.train()
-                else:
-                    net.eval()
+                            metrics.progress_str(),
+                            metrics.stats_str()))
 
             epoch_loss = running_loss/size[phase]
             print('Epoch {} complete. Phase: {}. '
                   'Loss: {:.4f}. '
-                  'Acc: {:.4f}. '
-                  'Precision: {:.4f}. '
-                  'Recall: {:.4f}. '
+                  '{} '
+                  '{} '
                   .format(
-                    epoch+1, phase, epoch_loss, accuracy,
-                    precision, recall))
+                    epoch+1, phase, epoch_loss,
+                    metrics.progress_str(),
+                    metrics.stats_str()))
 
             if len(phases) == 1 or phase == 'val':
                 checkpoint = {
                     'epoch': epoch+1,
-                    'accuracy': accuracy,
-                    'precision': precision,
-                    'recall': recall,
                     'optimizer_state_dict': opt.state_dict(),
-                    'loss': loss
+                    'loss': epoch_loss
                 }
-                if accuracy > best_accuracy:
-                    best_accuracy = torch.tensor(accuracy)
-                    best_precision = torch.tensor(precision)
-                    best_recall = torch.tensor(recall)
+                checkpoint.update(metrics.get_metrics())
+                if metrics.is_best():
                     best_epoch = epoch + 1
                     torch.save(net.state_dict(), temp_model_file.name)
                     if save_best and not save_all:
                         best_checkpoint = checkpoint
-                print('Best results: Epoch: {}. '
-                      'Acc: {:.4f}. '
-                      'Precision: {:.4f}. '
-                      'Recall: {:.4f}. '
-                      .format(
-                          best_epoch, best_accuracy,
-                          best_precision, best_recall))
+                metrics.show_best()
 
             if save_all:
                 net.save(checkpoint=checkpoint)
+            _handle_sch(sch, epoch_loss, phase)
+            metrics.reset()
 
     if 'val' in phases and best_checkpoint is not None:
         net.load_state_dict(torch.load(temp_model_file.name))
         os.remove(temp_model_file.name)
     # Put model in evaluation mode
+    metrics.finish()
     net.eval()
-    time_elapsed = time.time() - since
-    print('Training complete in {:.0f}m {:.0f}s'.format(
-        time_elapsed // 60, time_elapsed % 60))
-    print('Best accuracy was {} at epoch {}'.format(
-        best_accuracy, best_epoch))
+    best_metrics = metrics.get_best_metrics()
     if save_best and not save_all:
-        net.save(checkpoint=best_checkpoint)
-    return {'accuracy': best_accuracy.item(),
-            'epoch': best_epoch,
-            'precision': best_precision.item(),
-            'recall': best_recall.item()}
+        save_path = net.save(checkpoint=best_checkpoint)
+        best_metrics['save_path'] = save_path
+    return best_metrics
 
 
-def evaluate(net, input, device='cpu', surpress=False):
+def evaluate(net, input, device='cpu', metrics=None, surpress=False):
     """Evaluates a model on a given input
     """
     net.eval()
@@ -281,15 +227,8 @@ def evaluate(net, input, device='cpu', surpress=False):
         size = len(input.dataset)
         b_size = input.batch_size
 
-        N = len(input.dataset[0][1])
-    running_samples = 0
-    accuracy = 0.
-    precision = 0.
-    recall = 0.
-    if N != 0:
-        confusion = torch.zeros(N, N)
-    else:
-        confusion = None
+    if metrics is None:
+        metrics = MetricTracker.detect_metrics(input)
 
     # Print progress every 10th of batch size
     print_iter = int(size / b_size / 10)
@@ -298,44 +237,26 @@ def evaluate(net, input, device='cpu', surpress=False):
 
     for i, data in enumerate(input, 0):
         # Run training process
-        output = net(data[0].to(device))
-        running_samples += data[0].size(0)
-
-        if data[0].size() == data[1].size():
-            loss = nn.MSELoss()(output, data[1].to(device))
-            accuracy = ((i * accuracy + 10 * log10(1 / loss.item())) /
-                        (i + 1))
-        else:
-            out_idx = output.max(dim=1)[1]
-            lbl_idx = data[1].max(dim=1)[1]
-            if confusion is not None:
-                for j, k in zip(out_idx, lbl_idx):
-                    confusion[j, k] += 1
-            corr = confusion.diag()
-            accuracy = corr.sum() / confusion.sum()
-            precision = (corr / confusion.sum(1)).mean()
-            recall = (corr / confusion.sum(0)).mean()
+        with torch.no_grad():
+            output = net(data[0].to(device))
+        metrics.update(output, data[1].to(device))
+        del(output)
 
         # Print progress
         if i % print_iter == print_iter - 1 and not surpress:
             print('Iter [{}/{}] '
-                    'Acc: {:.4f}. '
-                    'Precision: {:.4f}. '
-                    'Recall: {:.4f}. '
-                    .format(
+                  '{} '
+                  '{} '
+                  .format(
                     i, size//b_size,
-                    accuracy,
-                    precision,
-                    recall))
+                    metrics.progress_str(),
+                    metrics.stats_str()))
     if not surpress:
         print('---')
         print('Final results.')
         print('---')
-        print('Acc: {:.4f}. Precision: {:.4f}. Recall: {:.4f}.'
-            .format(accuracy, precision, recall))
-    return {'accuracy': accuracy,
-            'precision': precision,
-            'recall': recall}
+        print(metrics.progress_str())
+    return metrics.get_metrics()
 
 
 def train_gan(netG, netD, input, criterion='default',
@@ -466,16 +387,12 @@ def _validate_opt_crit(opt, criterion, params):
         if not isinstance(opt[i], optim.Optimizer):
             if opt[i] == 'default':
                 opt[i] = optim.SGD(params[i], lr=0.01)
-            else:
-                raise ValueError('Invalid input for opt')
     opt = tuple(opt)
     if not isinstance(criterion, nn.modules.loss._Loss):
         if criterion == 'default':
             criterion = nn.MSELoss()
         elif criterion == 'bce':
             criterion = nn.BCELoss()
-        else:
-            raise ValueError('Invalid input for criterion')
 
     return (*opt, criterion)
 

@@ -5,3 +5,4 @@ data/
 .vscode/
 quicktorch.egg-info/
 docs/
+*.jpg
