@@ -208,9 +208,11 @@ def train(net, input, criterion='default',
     # Put model in evaluation mode
     metrics.finish()
     net.eval()
+    best_metrics = metrics.get_best_metrics()
     if save_best and not save_all:
-        net.save(checkpoint=best_checkpoint)
-    return metrics.get_best_metrics()
+        save_path = net.save(checkpoint=best_checkpoint)
+        best_metrics['save_path'] = save_path
+    return best_metrics
 
 
 def evaluate(net, input, device='cpu', metrics=None):

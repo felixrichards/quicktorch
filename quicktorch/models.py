@@ -227,6 +227,7 @@ class Model(nn.Module):
 
         torch.save(save_obj, save_path)
         print("Successfully saved at " + save_path)
+        return save_path
 
 
 class AlexNet(Model):
