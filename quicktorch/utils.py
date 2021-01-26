@@ -269,14 +269,19 @@ def train(net, input, criterion='default',
             'recall': best_recall.item()}
 
 
-def evaluate(net, input, device='cpu'):
+def evaluate(net, input, device='cpu', surpress=False):
     """Evaluates a model on a given input
     """
     net.eval()
-    size = len(input.dataset)
-    b_size = input.batch_size
+    if isinstance(input, list):
+        size = sum(input_i[0].size(0) for input_i in input)
+        b_size = input[0][0].size(0)
+        N = input[0][1].size(1)
+    else:
+        size = len(input.dataset)
+        b_size = input.batch_size
 
-    N = len(input.dataset[0][1])
+        N = len(input.dataset[0][1])
     running_samples = 0
     accuracy = 0.
     precision = 0.
@@ -312,7 +317,7 @@ def evaluate(net, input, device='cpu'):
             recall = (corr / confusion.sum(0)).mean()
 
         # Print progress
-        if i % print_iter == print_iter - 1:
+        if i % print_iter == print_iter - 1 and not surpress:
             print('Iter [{}/{}] '
                     'Acc: {:.4f}. '
                     'Precision: {:.4f}. '
@@ -322,11 +327,12 @@ def evaluate(net, input, device='cpu'):
                     accuracy,
                     precision,
                     recall))
-    print('---')
-    print('Final results.')
-    print('---')
-    print('Acc: {:.4f}. Precision: {:.4f}. Recall: {:.4f}.'
-          .format(accuracy, precision, recall))
+    if not surpress:
+        print('---')
+        print('Final results.')
+        print('---')
+        print('Acc: {:.4f}. Precision: {:.4f}. Recall: {:.4f}.'
+            .format(accuracy, precision, recall))
     return {'accuracy': accuracy,
             'precision': precision,
             'recall': recall}
