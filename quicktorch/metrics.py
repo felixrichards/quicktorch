@@ -225,7 +225,7 @@ class SegmentationTracker(MetricTracker):
             (self.batch_count + 1)
         )
         self.metrics['IoU'] = (
-            (self.batch_count * self.metrics['IoU'] + jaccard_score(lbl, pred)) /
+            (self.batch_count * self.metrics['IoU'] + jaccard_score(lbl, pred, zero_division=0)) /
             (self.batch_count + 1)
         )
         return self.metrics
