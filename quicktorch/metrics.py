@@ -27,26 +27,42 @@ def _is_one_hot(y):
 
 
 class MetricTracker():
-    def __init__(self):
+    """Base metric tracker class.
+
+    TODO separate metric dicts for phases
+    """
+    def __init__(self, Writer=None):
         self.metrics = OrderedDict()
         self.best_metrics = OrderedDict()
         self.epoch_count = 0
         self.batch_count = 0
         self.start_time = None
         self.batch_start = None
-        self.stats = OrderedDict()
+        self.stats = OrderedDict(loss=0)
+        self.Writer = Writer
 
-    def start(self):
+    def start(self, phases=None):
         """Starts timer
         """
         self.start_time = time.time()
         self.batch_start = time.time()
         self.stats['avg_time'] = 0
+        if self.Writer is not None:
+            self.Writer.start({**self.get_metrics(), **self.get_stats()}, phases=phases)
 
-    def reset(self):
+    def reset(self, phase=None, loss=None):
         """Resets all metrics for new epoch
         """
-        self.metrics.update({metric: torch.tensor(0.) for metric in self.metrics})
+        if self.Writer is not None:
+            if loss is not None:
+                self.stats['loss'] = loss
+            self.Writer.add({**self.get_metrics(), **self.get_stats()}, phase=phase)
+        self.clear_metrics()
+
+    def clear_metrics(self):
+        """Clear metrics
+        """
+        self.reset_dict(self.metrics)
         self.batch_start = time.time()
         self.batch_count = 0
         self.reset_buffers()
@@ -74,7 +90,7 @@ class MetricTracker():
     def calculate(self, output, target):
         """Calculates metrics for a given batch
 
-        This is an abstract method which MUST be overwritten.
+        This is an abstract method which MUST be overridden.
 
         TODO implement individual classes for metrics that makes this unnecessary.
         """
@@ -120,16 +136,25 @@ class MetricTracker():
 
     def finish(self):
         time_elapsed = time.time() - self.start_time
+        time_elapsed = 0
         print('Training complete in {:.0f}m {:.0f}s'.format(
             time_elapsed // 60, time_elapsed % 60))
         print('Best epoch: {}'.format(
             self._best_str()))
+
+    def get_stats(self):
+        return self.typecheck_metrics(self.stats)
 
     def get_metrics(self):
         return self.typecheck_metrics(self.metrics)
 
     def get_best_metrics(self):
         return self.typecheck_metrics(self.best_metrics)
+
+    @classmethod
+    def reset_dict(cls, d):
+        d.update({di: torch.tensor(0.) for di in d})
+        return d
 
     @classmethod
     def typecheck_metrics(cls, m):
@@ -139,6 +164,8 @@ class MetricTracker():
                 out[key] = val.item()
             else:
                 out[key] = val
+            if math.isnan(val):
+                out[key] = 0
         return out
 
     @classmethod

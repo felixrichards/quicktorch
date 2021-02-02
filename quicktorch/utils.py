@@ -130,7 +130,7 @@ def train(net, input, criterion='default',
     if metrics is None:
         metrics = MetricTracker.detect_metrics(input)
 
-    metrics.start()
+    metrics.start(phases)
     best_checkpoint = {}
 
     for epoch in range(epochs):
@@ -200,7 +200,7 @@ def train(net, input, criterion='default',
             if save_all:
                 net.save(checkpoint=checkpoint)
             _handle_sch(sch, epoch_loss, phase)
-            metrics.reset()
+            metrics.reset(phase, loss=epoch_loss)
 
     if 'val' in phases and best_checkpoint is not None:
         net.load_state_dict(torch.load(temp_model_file.name))
@@ -471,7 +471,7 @@ def get_splits(N, n_splits=5):
     """
     kfold = KFold(n_splits=n_splits, shuffle=True)
     splits = kfold.split(range(N))
-    splits = np.array(list(splits))
+    splits = np.array(list(splits), dtype=object)
 
     return splits
 
