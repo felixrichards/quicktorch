@@ -11,6 +11,6 @@ setup(
     author="felixajwndqw",
     url="github.com/felixajwndqw/quicktorch",
     packages=find_packages(),
-    install_requires=['numpy', 'scikit-image', 'sklearn',
+    install_requires=['numpy', 'scikit-image', 'scikit-learn>=0.21',
                       'torch', 'torchvision']
 )
