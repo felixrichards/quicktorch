@@ -38,7 +38,7 @@ class MetricTracker():
         self.batch_count = 0
         self.start_time = None
         self.batch_start = None
-        self.stats = OrderedDict(loss=0)
+        self.stats = OrderedDict()
         self.Writer = Writer
 
     def start(self, phases=None):
@@ -55,7 +55,7 @@ class MetricTracker():
         """
         if self.Writer is not None:
             if loss is not None:
-                self.stats['loss'] = loss
+                self.metrics['loss'] = loss
             self.Writer.add({**self.get_metrics(), **self.get_stats()}, phase=phase)
         self.clear_metrics()
 
@@ -117,7 +117,7 @@ class MetricTracker():
         print('Best epoch so far: {}'
               .format(self._best_str()))
 
-    def is_best(self):
+    def is_best(self, loss=None):
         """Checks if best metrics need to be updated.
 
         TODO add a way to update 'lower is better' metrics
@@ -205,6 +205,7 @@ class ClassificationTracker(MetricTracker):
         self.metrics["accuracy"] = torch.tensor(0.)
         self.metrics["precision"] = torch.tensor(0.)
         self.metrics["recall"] = torch.tensor(0.)
+        self.metrics["loss"] = torch.tensor(0.)
         self.best_metrics = self.metrics.copy()
         self.reset()
 

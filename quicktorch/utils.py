@@ -191,7 +191,6 @@ def train(net, input, criterion='default',
                 }
                 checkpoint.update(metrics.get_metrics())
                 if metrics.is_best():
-                    best_epoch = epoch + 1
                     torch.save(net.state_dict(), temp_model_file.name)
                     if save_best and not save_all:
                         best_checkpoint = checkpoint
