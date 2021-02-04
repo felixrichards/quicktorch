@@ -234,7 +234,7 @@ class SegmentationTracker(MetricTracker):
     """
     def __init__(self):
         super().__init__()
-        self.master_metric = "PSNR"
+        self.master_metric = "IoU"
         self.metrics["PSNR"] = torch.tensor(0.)
         self.metrics["IoU"] = torch.tensor(0.)
         self.best_metrics = self.metrics.copy()
