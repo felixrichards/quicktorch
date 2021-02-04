@@ -127,7 +127,7 @@ class MetricTracker():
         # Perhaps each metric can be a class
         # Define compare function?
         # Define master metric?
-        if self.metrics[self.master_metric] > self.best_metrics[self.master_metric]:
+        if self.metrics[self.master_metric] >= self.best_metrics[self.master_metric]:
             for metric in self.metrics:
                 self.best_metrics[metric] = self.metrics[metric]
             self.best_metrics['epoch'] = self.epoch_count
