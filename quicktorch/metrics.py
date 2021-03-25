@@ -3,6 +3,7 @@ import time
 import torch
 import torch.nn as nn
 from sklearn.metrics import jaccard_score
+from skimage.metrics import adapted_rand_error
 from collections import OrderedDict
 
 
@@ -151,6 +152,12 @@ class MetricTracker():
     def get_best_metrics(self):
         return self.typecheck_metrics(self.best_metrics)
 
+    def batch_average(self, metric, metric_key):
+        return (
+            (self.batch_count * self.metrics[metric_key] + metric) /
+            (self.batch_count + 1)
+        )
+
     @classmethod
     def reset_dict(cls, d):
         d.update({di: torch.tensor(0.) for di in d})
@@ -232,11 +239,16 @@ class ClassificationTracker(MetricTracker):
 class SegmentationTracker(MetricTracker):
     """Tracks metrics for segmentation performance.
     """
-    def __init__(self):
+    def __init__(self, full_metrics=False):
         super().__init__()
         self.master_metric = "PSNR"
         self.metrics["PSNR"] = torch.tensor(0.)
         self.metrics["IoU"] = torch.tensor(0.)
+        self.full_metrics = full_metrics
+        if full_metrics:
+            self.metrics["error"] = torch.tensor(0.)
+            self.metrics["precision"] = torch.tensor(0.)
+            self.metrics["recall"] = torch.tensor(0.)
         self.best_metrics = self.metrics.copy()
         self.mse_fn = nn.MSELoss()
         self.reset()
@@ -245,17 +257,18 @@ class SegmentationTracker(MetricTracker):
         """Calculates metrics for given batch
         """
         mse = self.mse_fn(output, target)
-        lbl = target.detach().cpu().flatten().numpy()
-        pred = output.detach().cpu().round().flatten().numpy()
+        lbl = target.detach().clamp(0, 1).cpu().numpy()
+        pred = output.detach().clamp(0, 1).cpu().round().numpy()
+        if self.full_metrics:
+            error, precision, recall = adapted_rand_error(lbl.astype('int'), pred.astype('int'))
+            self.metrics['error'] = self.batch_average(error, 'error')
+            self.metrics['precision'] = self.batch_average(precision, 'precision')
+            self.metrics['recall'] = self.batch_average(recall, 'recall')
+        lbl = lbl.flatten()
+        pred = pred.flatten()
         pred = self._clip(pred, lbl)
-        self.metrics['PSNR'] = (
-            (self.batch_count * self.metrics['PSNR'] + 10 * math.log10(1 / mse.item())) /
-            (self.batch_count + 1)
-        )
-        self.metrics['IoU'] = (
-            (self.batch_count * self.metrics['IoU'] + jaccard_score(lbl, pred, zero_division=0)) /
-            (self.batch_count + 1)
-        )
+        self.metrics['PSNR'] = self.batch_average(10 * math.log10(1 / mse.item()), 'PSNR')
+        self.metrics['IoU'] = self.batch_average(jaccard_score(lbl, pred, zero_division=0), 'IoU')
         return self.metrics
 
     @classmethod
