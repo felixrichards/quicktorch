@@ -1,8 +1,10 @@
+import asyncio
 from collections import OrderedDict
-try:
-    import labscribe
-except Exception:
-    pass
+import labscribe
+# try:
+#     import labscribe
+# except Exception:
+#     pass
 
 
 class MetricWriter():
@@ -31,14 +33,15 @@ class LabScribeWriter(MetricWriter):
             self.exp_name = '-'.join([f'{key}={val}' for key, val in args.items()])
         name = self.exp_name
 
-        cell = labscribe.googlesheets.begin_experiment(
-            self.sheet_name,
-            name,
-            args,
-            worksheet_name=self.exp_worksheet_name
+        self.exp_row = asyncio.run(
+            labscribe.gsheets_async.begin_experiment(
+                self.sheet_name,
+                name,
+                args,
+                worksheet_name=self.exp_worksheet_name
+            )
         )
 
-        self.exp_row = cell.row
         self.n_args = len(args)
 
     def upload_split(self, results):
@@ -46,13 +49,15 @@ class LabScribeWriter(MetricWriter):
         # split_col = self.n_args + 5 + len(results) * self.split
         split_col = 3 + (len(results) + 1) * self.split
 
-        labscribe.googlesheets.upload_results(
-            self.sheet_name,
-            self.exp_name,
-            OrderedDict(**results, exp_row=f'A{self.split_rows[self.split-1]}:Z{(self.split_rows[self.split-1] + self.iter + 1)}'),
-            worksheet_name=self.exp_worksheet_name,
-            row=self.exp_row,
-            col=split_col
+        asyncio.run(
+            labscribe.gsheets_async.upload_results(
+                self.sheet_name,
+                self.exp_name,
+                OrderedDict(**results, exp_row=f'A{self.split_rows[self.split-1]}:Z{(self.split_rows[self.split-1] + self.iter + 1)}'),
+                worksheet_name=self.exp_worksheet_name,
+                row=self.exp_row,
+                col=split_col
+            )
         )
         self.split += 1
         self.iter = 1
@@ -62,13 +67,15 @@ class LabScribeWriter(MetricWriter):
         # split_col = self.n_args + 5
         split_col = 3
 
-        labscribe.googlesheets.upload_results(
-            self.sheet_name,
-            self.exp_name,
-            OrderedDict(**results, exp_row=f'A{self.split_rows[split-1]}:Z{(self.split_rows[split-1] + self.iter + 1)}'),
-            worksheet_name=self.exp_worksheet_name,
-            row=self.exp_row,
-            col=split_col
+        asyncio.run(
+            labscribe.gsheets_async.upload_results(
+                self.sheet_name,
+                self.exp_name,
+                OrderedDict(**results, exp_row=f'A{self.split_rows[split-1]}:Z{(self.split_rows[split-1] + self.iter + 1)}'),
+                worksheet_name=self.exp_worksheet_name,
+                row=self.exp_row,
+                col=split_col
+            )
         )
         self.split += 1
         self.iter = 1
@@ -82,21 +89,26 @@ class LabScribeWriter(MetricWriter):
         if phases is None:
             phases = [None]
         self.phases = phases
-        self.split_rows[self.split-1], self.phase_cols = labscribe.googlesheets.init_metrics(
-            self.sheet_name,
-            self.exp_name,
-            metric_keys,
-            worksheet_name=self.metrics_worksheet_name,
-            phases=phases
+        self.split_rows[self.split-1], self.phase_cols = asyncio.run(
+            labscribe.gsheets_async.init_metrics(
+                self.sheet_name,
+                self.exp_name,
+                metric_keys,
+                worksheet_name=self.metrics_worksheet_name,
+                phases=phases
+            )
         )
 
     def add(self, metrics, phase=None):
-        labscribe.googlesheets.upload_metrics(
-            self.sheet_name,
-            metrics,
-            self.metrics_worksheet_name,
-            iter=self.iter,
-            col=self.phase_cols[phase]
+        asyncio.run(
+            labscribe.gsheets_async.upload_metrics(
+                self.sheet_name,
+                metrics,
+                self.metrics_worksheet_name,
+                epoch=self.iter,
+                row=self.split_rows[self.split-1] + self.iter + 2,
+                col=self.phase_cols[phase]
+            )
         )
         if phase == self.phases[-1]:
             self.iter += 1
