@@ -62,7 +62,7 @@ def _handle_sch(sch, running_loss=None, phase='train'):
 def train(net, input, criterion='default',
           epochs=5, opt='default', sch=None,
           metrics=None, device="cpu",
-          save_best=False, save_all=False):
+          save_best=False, save_all=False, save_last=False):
     """Trains a neural network
 
     This function was written to use extra features added
@@ -90,6 +90,8 @@ def train(net, input, criterion='default',
         save_best (boolean, optional): Saves the model at the best epoch.
             Defaults to False.
         save_all (boolean, optional): Saves the model at all epochs.
+            Defaults to False.
+        save_last (boolean, optional): Saves the model at the final epoch.
             Defaults to False.
 
     Returns:
@@ -201,6 +203,8 @@ def train(net, input, criterion='default',
             _handle_sch(sch, epoch_loss, phase)
             metrics.reset(phase, loss=epoch_loss)
 
+    if save_last:
+        net.save(name=net.name+'_last', checkpoint=checkpoint)
     if 'val' in phases and best_checkpoint is not None:
         net.load_state_dict(torch.load(temp_model_file.name))
         os.remove(temp_model_file.name)
