@@ -1,8 +1,9 @@
 import math
 import time
+import numpy as np
 import torch
 import torch.nn as nn
-from sklearn.metrics import jaccard_score
+from sklearn.metrics import jaccard_score, f1_score
 from skimage.metrics import adapted_rand_error
 from collections import OrderedDict
 
@@ -24,6 +25,7 @@ def _format_val(key, val):
 
 
 def _is_one_hot(y):
+    #check  item is array-like
     return all([item == 0 or item == 1 for item in y])
 
 
@@ -176,21 +178,24 @@ class MetricTracker():
         return out
 
     @classmethod
-    def detect_metrics(cls, dataset):
+    def detect_metrics(cls, dataloader):
         """Attempts to detect the most suitable metric tracker.
         """
-        if type(dataset) is list or type(dataset) is tuple:
-            dataset = dataset[0]
-        data = dataset.dataset[0]
-        if data[0].size(-1) == data[1].size(-1) and data[0].size(-2) == data[1].size(-2):
-            if len(torch.unique(data[1])) > 2:
-                return DenoisingTracker()
-            return SegmentationTracker()
+        if type(dataloader) is list or type(dataloader) is tuple:
+            dataloader = dataloader[0]
+        data = dataloader.dataset[0]
+
+        if data[1].ndim > 0:
+            if data[0].size(-1) == data[1].size(-1) and data[0].size(-2) == data[1].size(-2):
+                if len(torch.unique(data[1])) > 2:
+                    return DenoisingTracker()
+                return SegmentationTracker()
 
         # Get number of classes
         N = 0
-        if hasattr(dataset, 'num_classes'):
-            N = dataset.num_classes
+        print(dataloader.dataset.num_classes)
+        if hasattr(dataloader.dataset, 'num_classes'):
+            N = dataloader.dataset.num_classes
             return ClassificationTracker(N)
         if _is_one_hot(data[1]):
             N = len(data[1])
@@ -225,7 +230,10 @@ class ClassificationTracker(MetricTracker):
         """Calculates metrics for given batch
         """
         out_idx = output.max(dim=1)[1]
-        lbl_idx = target.max(dim=1)[1]
+        if target.ndim > 1:
+            lbl_idx = target.max(dim=1)[1]
+        else:
+            lbl_idx = target
         if self.confusion is not None:
             for j, k in zip(out_idx, lbl_idx):
                 self.confusion[j, k] += 1
@@ -256,24 +264,19 @@ class SegmentationTracker(MetricTracker):
     def calculate(self, output, target):
         """Calculates metrics for given batch
         """
-        mse = self.mse_fn(output, target)
-        lbl = target.detach().clamp(0, 1).cpu().numpy()
-        pred = output.detach().clamp(0, 1).cpu().round().numpy()
+        lbl = target.detach().cpu().numpy()
+        pred = output.detach()
+        pred = torch.sigmoid(pred)
+        mse = self.mse_fn(pred, target)
+        pred = pred.cpu().round().numpy()
         if self.full_metrics:
             error, precision, recall = adapted_rand_error(lbl.astype('int'), pred.astype('int'))
             self.metrics['error'] = self.batch_average(error, 'error')
             self.metrics['precision'] = self.batch_average(precision, 'precision')
             self.metrics['recall'] = self.batch_average(recall, 'recall')
-        lbl = lbl.flatten()
-        pred = pred.flatten()
-        pred = self._clip(pred, lbl)
         self.metrics['PSNR'] = self.batch_average(10 * math.log10(1 / mse.item()), 'PSNR')
-        self.metrics['IoU'] = self.batch_average(jaccard_score(lbl, pred, zero_division=0), 'IoU')
+        self.metrics['IoU'] = self.batch_average(iou(pred, lbl), 'IoU')
         return self.metrics
-
-    @classmethod
-    def _clip(cls, pred, lbl):
-        return pred.clip(lbl.min(), lbl.max())
 
 
 class DenoisingTracker(MetricTracker):
@@ -318,3 +321,23 @@ class RegressionTracker(MetricTracker):
             (self.batch_count + 1)
         )
         return self.metrics
+
+
+def _clip(pred):
+    return pred.clip(0, 1)
+
+
+def iou(pred, lbl, to_mask=None):
+    pred = pred.flatten()
+    lbl = lbl.flatten()
+    if to_mask is not None:
+        pred = to_mask(pred, lbl)
+    return jaccard_score(lbl, pred, zero_division=0)
+
+
+def dice(pred, lbl, to_mask=None):
+    pred = pred.flatten()
+    lbl = lbl.flatten()
+    if to_mask is not None:
+        pred = to_mask(pred)
+    return f1_score(lbl, pred, zero_division=0)
