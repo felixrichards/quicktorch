@@ -128,8 +128,9 @@ def mnist(dir='../data/mnist', batch_size=32, rotate=False, num_workers=0, idxs=
 
     return trainloader, validloader, testloader
 
+
 def mnistrot(batch_size=32, num_workers=0, transform=None, dir='../data/mnistrot/',
-             test=False, split=None, rotate=False):
+             test=False, split=None, rotate=False, onehot=True):
     """
     Loads the MNISTrot dataset.
 
@@ -175,7 +176,12 @@ def mnistrot(batch_size=32, num_workers=0, transform=None, dir='../data/mnistrot
     transform = transforms.Compose(transform)
     if test:
         dataloader = torch.utils.data.DataLoader(
-            MNISTRot(dir, test=True, transform=norm_transform),
+            MNISTRot(
+                dir,
+                test=True,
+                transform=norm_transform,
+                onehot=onehot
+            ),
             batch_size=batch_size, shuffle=True,
             pin_memory=True, num_workers=num_workers
         )
@@ -188,12 +194,24 @@ def mnistrot(batch_size=32, num_workers=0, transform=None, dir='../data/mnistrot
                 idxs[10000:]
             ]
         trainloader = torch.utils.data.DataLoader(
-            MNISTRot(dir, test=False, indices=split[0], transform=transform),
+            MNISTRot(
+                dir,
+                test=False,
+                indices=split[0],
+                transform=transform,
+                onehot=onehot
+            ),
             batch_size=batch_size, shuffle=True,
             pin_memory=True, num_workers=num_workers
         )
         testloader = torch.utils.data.DataLoader(
-            MNISTRot(dir, test=False, indices=split[1], transform=norm_transform),
+            MNISTRot(
+                dir,
+                test=False,
+                indices=split[1],
+                transform=norm_transform,
+                onehot=onehot
+            ),
             batch_size=batch_size, shuffle=True,
             pin_memory=True, num_workers=num_workers
         )

@@ -136,10 +136,15 @@ class MNISTRot(Dataset):
     test_file = 'test.pt'
 
     def __init__(self, dir='../data/mnistrot', test=False, indices=None,
-                 transform=None):
+                 transform=None, onehot=True):
         self.dir = dir
         self.transform = transform
         self.test = test
+        self.num_classes = 10
+        if onehot:
+            self.categorical = MakeCategorical(self.num_classes)
+        else:
+            self.categorical = None
 
         if not os.path.isdir(dir):
             os.mkdir(dir)
@@ -163,9 +168,12 @@ class MNISTRot(Dataset):
         self.data, self.targets = torch.load(os.path.join(dir, 'processed', data_file))
         if indices is not None:
             self.data, self.targets = self.data[indices], self.targets[indices]
+        self.targets = self.targets.to(torch.long)
 
     def __getitem__(self, i):
-        img, target = self.data[i], MakeCategorical()(self.targets[i])
+        img, target = self.data[i], self.targets[i]
+        if self.categorical is not None:
+            target = self.categorical(target)
 
         if self.transform is not None:
             img = Image.fromarray(img.numpy(), mode='L')
