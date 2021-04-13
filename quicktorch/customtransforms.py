@@ -33,9 +33,10 @@ class MakeCategorical(object):
     Args:
         n_classes (int, optional): Number of classes. Defaults to 10.
     """
-    def __init__(self, n_classes=10):
+    def __init__(self, n_classes=10, dtype=torch.float32):
         assert isinstance(n_classes, int)
         self.classes = n_classes
+        self.dtype = dtype
 
     def __call__(self, labels):
         """
@@ -49,11 +50,12 @@ class MakeCategorical(object):
             labels = torch.tensor(labels)
 
         if labels.dim() == 0:
-            n_labels = torch.zeros(self.classes)
+            n_labels = torch.zeros(self.classes, dtype=self.dtype)
             n_labels[int(labels)] = 1
             return n_labels
 
-        n_labels = torch.zeros(len(labels), self.classes)
+        n_labels = torch.zeros(len(labels), self.classes, dtype=self.dtype)
         for i, label in enumerate(labels):
             n_labels[i, int(label)] = 1
+
         return n_labels
