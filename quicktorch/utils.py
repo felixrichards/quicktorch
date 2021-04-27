@@ -61,7 +61,7 @@ def _handle_sch(sch, running_loss=None, phase='train'):
 
 def train(net, input, criterion='default',
           epochs=5, opt='default', sch=None,
-          metrics=None, device="cpu",
+          metrics=None, device="cpu", val_epochs=1,
           save_best=False, save_all=False, save_last=False):
     """Trains a neural network
 
@@ -87,6 +87,8 @@ def train(net, input, criterion='default',
             Defaults to None.
         device (str, optional): Index of GPU or 'cpu' if no GPU.
             Defaults to 'cpu'.
+        val_epochs (int, optional): How often to run validation.
+            Defaults to 1, corresponding to every epoch.
         save_best (boolean, optional): Saves the model at the best epoch.
             Defaults to False.
         save_all (boolean, optional): Saves the model at all epochs.
@@ -144,6 +146,8 @@ def train(net, input, criterion='default',
             if phase == 'train':
                 net.train()
             else:
+                if epoch % val_epochs:
+                    continue
                 net.eval()
             print(f'phase={phase}, net.training={net.training}')
             running_loss = 0.0
