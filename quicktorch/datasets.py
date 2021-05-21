@@ -232,24 +232,21 @@ class BSD500(Dataset):
     data_path = "BSR/BSDS500/data"
 
     def __init__(self, dir='../data/bsd500', test=False, indices=None,
-                 transform=None):
+                 transform=None, landscape=False):
         self.dir = dir
         self.transform = transform
         self.test = test
-
-        if not os.path.isdir(dir):
-            os.mkdir(dir)
-        if not os.path.isdir(os.path.join(dir, 'raw')):
-            os.mkdir(os.path.join(dir, 'raw'))
-        print(os.path.join(dir, 'raw', self.dlname))
-        if not os.path.exists(os.path.join(dir, 'raw', self.dlname)):
-            print('BSD500 raw data not found. Attempting to download.')
-            self.download()
+        self.landscape = landscape
 
         phase = 'test' if test else 'train'
 
         if not os.path.isdir(os.path.join(dir, 'processed')):
             print('BSD500 processed data not found. Attempting to create.')
+            if not os.path.exists(os.path.join(dir, 'raw', self.dlname)):
+                print('BSD500 raw data not found. Attempting to download.')
+                if not os.path.isdir(os.path.join(dir, 'raw')):
+                    os.mkdirs(os.path.join(dir, 'raw'))
+                self.download()
             self.process()
 
         self.img_paths = [
@@ -266,10 +263,9 @@ class BSD500(Dataset):
         img = np.array(Image.open(self.img_paths[i]))
         label = np.array(Image.open(self.mask_paths[i]))
 
-        rot = False # Rotate to normalise portrait to landscape
-        if img.shape[0] > img.shape[1]:
-            rot = True
-            img, label = np.rot90(img, -1), np.rot90(label, -1)
+        if self.landscape:
+            if img.shape[0] > img.shape[1]:
+                img, label = np.rot90(img, -1), np.rot90(label, -1)
 
         if self.transform is not None:
             t = self.transform(image=img, mask=label)
@@ -297,13 +293,10 @@ class BSD500(Dataset):
 
     def process(self):
         print('Processing')
-        os.mkdir(os.path.join(self.dir, 'processed'))
-        os.mkdir(os.path.join(self.dir, 'processed', 'train'))
-        os.mkdir(os.path.join(self.dir, 'processed', 'test'))
-        os.mkdir(os.path.join(self.dir, 'processed', 'train', 'images'))
-        os.mkdir(os.path.join(self.dir, 'processed', 'train', 'labels'))
-        os.mkdir(os.path.join(self.dir, 'processed', 'test', 'images'))
-        os.mkdir(os.path.join(self.dir, 'processed', 'test', 'labels'))
+        os.mkdirs(os.path.join(self.dir, 'processed', 'train', 'images'))
+        os.mkdirs(os.path.join(self.dir, 'processed', 'train', 'labels'))
+        os.mkdirs(os.path.join(self.dir, 'processed', 'test', 'images'))
+        os.mkdirs(os.path.join(self.dir, 'processed', 'test', 'labels'))
 
         from_tos = (
             ('train', 'train'),
@@ -316,7 +309,6 @@ class BSD500(Dataset):
             self._convert_mat_to_png(os.path.join(self.data_path, "groundTruth", from_dir), to_dir)
         print('Done')
 
-    
     def _move_images(self, from_dir, to_dir):
         for f in glob.glob(os.path.join(self.dir, 'raw', from_dir, "*.jpg")):
             shutil.copy(f, os.path.join(self.dir, 'processed', to_dir, 'images'))
