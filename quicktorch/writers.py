@@ -53,7 +53,7 @@ class LabScribeWriter(MetricWriter):
             labscribe.gsheets_async.upload_results(
                 self.sheet_name,
                 self.exp_name,
-                OrderedDict(**results, exp_row=f'A{self.split_rows[self.split-1]}:Z{(self.split_rows[self.split-1] + self.iter + 1)}'),
+                OrderedDict(**results, exp_row=self.exp_region()),
                 worksheet_name=self.exp_worksheet_name,
                 row=self.exp_row,
                 col=split_col
@@ -71,7 +71,7 @@ class LabScribeWriter(MetricWriter):
             labscribe.gsheets_async.upload_results(
                 self.sheet_name,
                 self.exp_name,
-                OrderedDict(**results, exp_row=f'A{self.split_rows[split-1]}:Z{(self.split_rows[split-1] + self.iter + 1)}'),
+                OrderedDict(**results, exp_row=self.exp_region(split=split)),
                 worksheet_name=self.exp_worksheet_name,
                 row=self.exp_row,
                 col=split_col
@@ -79,6 +79,14 @@ class LabScribeWriter(MetricWriter):
         )
         self.split += 1
         self.iter = 1
+
+    def exp_region(self, split=None):
+        if split is None:
+            split = self.split
+        if self.split_rows[split-1] is None:
+            return ''
+        exp_region = f'A{self.split_rows[split-1]}:Z{(self.split_rows[split-1] + self.iter + 1)}'
+        return exp_region
 
     def start(self, metrics, phases=None):
         # labscribe.googlesheets.clear_worksheet(
