@@ -232,7 +232,7 @@ class BSD500(Dataset):
     data_path = "BSR/BSDS500/data"
 
     def __init__(self, dir='../data/bsd500', test=False, indices=None,
-                 transform=None, landscape=False):
+                 transform=None, landscape=False, padding=0):
         self.dir = dir
         self.transform = transform
         self.test = test
@@ -259,6 +259,8 @@ class BSD500(Dataset):
             self.img_paths = [self.img_paths[i] for i in indices]
             self.mask_paths = [self.mask_paths[i] for i in indices]
 
+        self.padding = padding
+
     def __getitem__(self, i):
         img = np.array(Image.open(self.img_paths[i]))
         label = np.array(Image.open(self.mask_paths[i]))
@@ -278,10 +280,14 @@ class BSD500(Dataset):
         # if rot: # Unrotate portrait images
         #     img, label = np.rot90(img, -1), np.rot90(label, -1)
 
-        return (
-            transforms.ToTensor()(img.copy()),
-            transforms.ToTensor()(label.copy())
-        )
+        img = transforms.ToTensor()(img.copy())
+        label = transforms.ToTensor()(label.copy())
+
+        # albumentations workaround
+        if self.padding > 0:
+            label = remove_padding(label, self.padding)
+
+        return img, label
 
     def __len__(self):
         return len(self.img_paths)
@@ -379,3 +385,7 @@ class EMDataset(Dataset):
 
     def __len__(self):
         return len(self.em_paths) * self.aug_mult
+
+
+def remove_padding(t, p):
+    return t[..., p//2:-p//2, p//2:-p//2]

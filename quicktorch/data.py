@@ -219,7 +219,7 @@ def mnistrot(batch_size=32, num_workers=0, transform=None, dir='../data/mnistrot
 
 
 def bsd(batch_size=32, num_workers=0, transform=None, dir='../data/bsd500/',
-             test=False, split=None):
+        test=False, split=None, padding=0):
     """
     Loads the BSD500 dataset.
 
@@ -241,7 +241,7 @@ def bsd(batch_size=32, num_workers=0, transform=None, dir='../data/bsd500/',
     """
     if test:
         dataloader = torch.utils.data.DataLoader(
-            BSD500(dir, test=True, transform=transform),
+            BSD500(dir, test=True, transform=transform, padding=padding),
             batch_size=batch_size, shuffle=True,
             pin_memory=True, num_workers=num_workers,
         )
@@ -253,12 +253,12 @@ def bsd(batch_size=32, num_workers=0, transform=None, dir='../data/bsd500/',
                 torch.arange(250, 300)
             ]
         trainloader = torch.utils.data.DataLoader(
-            BSD500(dir, test=False, indices=split[0], transform=transform),
+            BSD500(dir, test=False, indices=split[0], transform=transform, padding=padding),
             batch_size=batch_size, shuffle=True,
             pin_memory=True, num_workers=num_workers,
         )
         testloader = torch.utils.data.DataLoader(
-            BSD500(dir, test=False, indices=split[1], transform=transform),
+            BSD500(dir, test=False, indices=split[1], transform=transform, padding=padding),
             batch_size=batch_size, shuffle=True,
             pin_memory=True, num_workers=num_workers,
         )
