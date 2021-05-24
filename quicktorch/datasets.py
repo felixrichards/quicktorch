@@ -245,7 +245,7 @@ class BSD500(Dataset):
             if not os.path.exists(os.path.join(dir, 'raw', self.dlname)):
                 print('BSD500 raw data not found. Attempting to download.')
                 if not os.path.isdir(os.path.join(dir, 'raw')):
-                    os.mkdirs(os.path.join(dir, 'raw'))
+                    os.makedirs(os.path.join(dir, 'raw'))
                 self.download()
             self.process()
 
@@ -299,10 +299,10 @@ class BSD500(Dataset):
 
     def process(self):
         print('Processing')
-        os.mkdirs(os.path.join(self.dir, 'processed', 'train', 'images'))
-        os.mkdirs(os.path.join(self.dir, 'processed', 'train', 'labels'))
-        os.mkdirs(os.path.join(self.dir, 'processed', 'test', 'images'))
-        os.mkdirs(os.path.join(self.dir, 'processed', 'test', 'labels'))
+        os.makedirs(os.path.join(self.dir, 'processed', 'train', 'images'))
+        os.makedirs(os.path.join(self.dir, 'processed', 'train', 'labels'))
+        os.makedirs(os.path.join(self.dir, 'processed', 'test', 'images'))
+        os.makedirs(os.path.join(self.dir, 'processed', 'test', 'labels'))
 
         from_tos = (
             ('train', 'train'),
