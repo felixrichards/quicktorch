@@ -11,6 +11,8 @@ import numpy as np
 from .customtransforms import MakeCategorical
 from .utils import download
 import scipy.io
+import matplotlib.pyplot as plt
+import cv2
 """This module provides wrappers for loading custom datasets.
 """
 
@@ -245,7 +247,7 @@ class BSD500(Dataset):
             if not os.path.exists(os.path.join(dir, 'raw', self.dlname)):
                 print('BSD500 raw data not found. Attempting to download.')
                 if not os.path.isdir(os.path.join(dir, 'raw')):
-                    os.mkdirs(os.path.join(dir, 'raw'))
+                    os.makedirs(os.path.join(dir, 'raw'))
                 self.download()
             self.process()
 
@@ -299,10 +301,10 @@ class BSD500(Dataset):
 
     def process(self):
         print('Processing')
-        os.mkdirs(os.path.join(self.dir, 'processed', 'train', 'images'))
-        os.mkdirs(os.path.join(self.dir, 'processed', 'train', 'labels'))
-        os.mkdirs(os.path.join(self.dir, 'processed', 'test', 'images'))
-        os.mkdirs(os.path.join(self.dir, 'processed', 'test', 'labels'))
+        os.makedirs(os.path.join(self.dir, 'processed', 'train', 'images'))
+        os.makedirs(os.path.join(self.dir, 'processed', 'train', 'labels'))
+        os.makedirs(os.path.join(self.dir, 'processed', 'test', 'images'))
+        os.makedirs(os.path.join(self.dir, 'processed', 'test', 'labels'))
 
         from_tos = (
             ('train', 'train'),
@@ -319,13 +321,15 @@ class BSD500(Dataset):
         for f in glob.glob(os.path.join(self.dir, 'raw', from_dir, "*.jpg")):
             shutil.copy(f, os.path.join(self.dir, 'processed', to_dir, 'images'))
 
-    def _convert_mat_to_png(self, from_dir, to_dir, aggregation='weighted'):
+    def _convert_mat_to_png(self, from_dir, to_dir, aggregation='weighted', dilate=True):
         for f in glob.glob(os.path.join(self.dir, 'raw', from_dir, "*.mat")):
             name = os.path.split(f)[-1]
             name = name[:len(name)-4] + '.png'
             gts = scipy.io.loadmat(f)
             gts = gts['groundTruth']
             gts = np.array([gts[0,i][0,0][1] for i in range(gts.shape[1])])
+            if dilate:
+                gts = np.array([cv2.dilate(gt, (3, 3)) for gt in gts])
             if aggregation == 'weighted':
                 gts = gts.mean(axis=0)
             gts = (gts * 255).astype('uint8')
