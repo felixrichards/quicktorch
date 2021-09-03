@@ -209,7 +209,7 @@ def train(net, input, criterion='default',
 
     if save_last:
         net.save(name=net.name+'_last', checkpoint=checkpoint)
-    if 'val' in phases and best_checkpoint is not None:
+    if 'val' in phases and best_checkpoint is not None and epochs >= val_epochs:
         net.load_state_dict(torch.load(temp_model_file.name))
         os.remove(temp_model_file.name)
     # Put model in evaluation mode
