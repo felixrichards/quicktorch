@@ -146,7 +146,7 @@ def train(net, input, criterion='default',
             if phase == 'train':
                 net.train()
             else:
-                if epoch % val_epochs:
+                if (epoch + 1) % val_epochs:
                     continue
                 net.eval()
             print(f'phase={phase}, net.training={net.training}')
@@ -202,8 +202,8 @@ def train(net, input, criterion='default',
                         best_checkpoint = checkpoint
                 metrics.show_best()
 
-            if save_all:
-                net.save(checkpoint=checkpoint)
+                if save_all:
+                    net.save(checkpoint=checkpoint)
             _handle_sch(sch, epoch_loss, phase)
             metrics.reset(phase, loss=epoch_loss)
 
