@@ -332,7 +332,11 @@ def iou(pred, lbl, to_mask=None):
     lbl = lbl.flatten()
     if to_mask is not None:
         pred = to_mask(pred, lbl)
-    return jaccard_score(lbl, pred, zero_division=0)
+    try:
+        score = jaccard_score(lbl, pred, zero_division=0)
+    except:
+        score = 0.
+    return score
 
 
 def dice(pred, lbl, to_mask=None):
@@ -340,4 +344,8 @@ def dice(pred, lbl, to_mask=None):
     lbl = lbl.flatten()
     if to_mask is not None:
         pred = to_mask(pred)
-    return f1_score(lbl, pred, zero_division=0)
+    try:
+        score = f1_score(lbl, pred, zero_division=0)
+    except:
+        score = 0.
+    return score
