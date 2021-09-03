@@ -3,6 +3,8 @@ import time
 import numpy as np
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
+import torchmetrics
 from sklearn.metrics import jaccard_score, f1_score
 from skimage.metrics import adapted_rand_error
 from collections import OrderedDict
@@ -252,6 +254,7 @@ class SegmentationTracker(MetricTracker):
         self.master_metric = "IoU"
         self.metrics["PSNR"] = torch.tensor(0.)
         self.metrics["IoU"] = torch.tensor(0.)
+        self.metrics["Dice"] = torch.tensor(0.)
         self.full_metrics = full_metrics
         if full_metrics:
             self.metrics["error"] = torch.tensor(0.)
@@ -276,6 +279,35 @@ class SegmentationTracker(MetricTracker):
             self.metrics['recall'] = self.batch_average(recall, 'recall')
         self.metrics['PSNR'] = self.batch_average(10 * math.log10(1 / mse.item()), 'PSNR')
         self.metrics['IoU'] = self.batch_average(iou(pred, lbl), 'IoU')
+        self.metrics["Dice"] = self.batch_average(dice(pred, lbl), 'IoU')
+        return self.metrics
+
+
+class MultiClassSegmentationTracker(MetricTracker):
+    """Tracks metrics for segmentation performance.
+    """
+    def __init__(self, full_metrics=False, n_classes=10):
+        super().__init__()
+        self.master_metric = "IoU"
+        self.metrics["PSNR"] = torch.tensor(0.)
+        self.metrics["IoU"] = torch.tensor(0.)
+        self.metrics["Dice"] = torch.tensor(0.)
+        self.full_metrics = full_metrics
+        self.best_metrics = self.metrics.copy()
+        self.iou_fn = torchmetrics.IoU(n_classes)
+        self.dice_fn = torchmetrics.F1(n_classes, mdmc_average='samplewise')
+        self.reset()
+
+    def calculate(self, output, target):
+        """Calculates metrics for given batch
+        """
+        target = target.detach()
+        output = output.detach()
+        output = F.softmax(output, dim=1)
+        output = torch.argmax(output, dim=1)
+
+        self.metrics['IoU'] = self.batch_average(self.iou_fn(output, target), 'IoU')
+        self.metrics["Dice"] = self.batch_average(self.dice_fn(output, target), 'Dice')
         return self.metrics
 
 
