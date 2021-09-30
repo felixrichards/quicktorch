@@ -6,3 +6,4 @@ data/
 quicktorch.egg-info/
 docs/
 *.jpg
+*.pyc
