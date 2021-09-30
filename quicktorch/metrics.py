@@ -171,12 +171,13 @@ class MetricTracker():
     def typecheck_metrics(cls, m):
         out = OrderedDict()
         for key, val in m.items():
-            if isinstance(val, torch.Tensor):
-                out[key] = val.item()
-            else:
-                out[key] = val
-            if math.isnan(val):
-                out[key] = 0
+            if key.lower() != 'loss':
+                if isinstance(val, torch.Tensor):
+                    out[key] = val.item()
+                else:
+                    out[key] = val
+                if math.isnan(val):
+                    out[key] = 0
         return out
 
     @classmethod
@@ -187,7 +188,12 @@ class MetricTracker():
             dataloader = dataloader[0]
         data = dataloader.dataset[0]
 
-        if data[1].ndim > 0:
+        if type(data[1]) is torch.long or type(data[1]) is int:
+            if hasattr(dataloader.dataset, 'classes'):
+                return ClassificationTracker(len(dataloader.dataset.classes))
+            else:
+                return ClassificationTracker(10)
+        elif data[1].ndim > 0:
             if data[0].size(-1) == data[1].size(-1) and data[0].size(-2) == data[1].size(-2):
                 if len(torch.unique(data[1])) > 2:
                     return DenoisingTracker()
@@ -195,7 +201,6 @@ class MetricTracker():
 
         # Get number of classes
         N = 0
-        print(dataloader.dataset.num_classes)
         if hasattr(dataloader.dataset, 'num_classes'):
             N = dataloader.dataset.num_classes
             return ClassificationTracker(N)
