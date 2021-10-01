@@ -2,8 +2,7 @@ import torch
 import torch.nn.functional as F
 import torch.nn as nn
 
-from quicktorch.models import Model	
-from igcn.seg.scale import Scale, ScaleParallel
+from quicktorch.models import Model
 from quicktorch.modules.attention.attention import (
     Disassemble,
     Reassemble,
