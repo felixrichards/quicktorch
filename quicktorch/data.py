@@ -98,7 +98,6 @@ def mnist(dir='../data/mnist', batch_size=32, rotate=False, num_workers=0, idxs=
         train=True,
         download=True,
         transform=transform,
-        target_transform=target_transform
     )
 
     if idxs is not None:
@@ -121,8 +120,7 @@ def mnist(dir='../data/mnist', batch_size=32, rotate=False, num_workers=0, idxs=
     else:
         validloader = None
     testloader = torch.utils.data.DataLoader(
-        torchvision.datasets.MNIST(dir, train=False, transform=transform,
-                                   target_transform=target_transform),
+        torchvision.datasets.MNIST(dir, train=False, transform=transform,),
         batch_size=batch_size, shuffle=True,
         pin_memory=True, num_workers=num_workers)
 
