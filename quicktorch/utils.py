@@ -216,7 +216,7 @@ def train(net, input, criterion='default',
     metrics.finish()
     net.eval()
     best_metrics = metrics.get_best_metrics()
-    if save_best and not save_all:
+    if save_best:
         save_path = net.save(checkpoint=best_checkpoint)
         best_metrics['save_path'] = save_path
     return best_metrics

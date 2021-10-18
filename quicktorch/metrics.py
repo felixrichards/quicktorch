@@ -23,6 +23,9 @@ def _format_val(key, val):
         return str(int(val))
     if "time" in key:
         return '{:.4f}'.format(val)
+    if type(val) is torch.Tensor:
+        if val.ndim > 0:
+            return ['{:.4f}'.format(val_i) for val_i in val]
     return '{:.4f}'.format(val)
 
 
@@ -173,11 +176,16 @@ class MetricTracker():
         for key, val in m.items():
             if key.lower() != 'loss':
                 if isinstance(val, torch.Tensor):
-                    out[key] = val.item()
+                    if torch.any(torch.isnan(val)):
+                        val[torch.isnan(val)] = 0
+                    if val.ndim == 0:
+                        out[key] = val.item()
+                    elif val.ndim == 1:
+                        out[key] = val
                 else:
                     out[key] = val
-                if math.isnan(val):
-                    out[key] = 0
+                    if math.isnan(val):
+                        out[key] = 0
         return out
 
     @classmethod
@@ -291,16 +299,21 @@ class SegmentationTracker(MetricTracker):
 class MultiClassSegmentationTracker(MetricTracker):
     """Tracks metrics for segmentation performance.
     """
-    def __init__(self, full_metrics=False, n_classes=10):
+    def __init__(self, full_metrics=False, n_classes=10, device='cuda:0'):
         super().__init__()
         self.master_metric = "IoU"
-        self.metrics["PSNR"] = torch.tensor(0.)
         self.metrics["IoU"] = torch.tensor(0.)
         self.metrics["Dice"] = torch.tensor(0.)
         self.full_metrics = full_metrics
         self.best_metrics = self.metrics.copy()
-        self.iou_fn = torchmetrics.IoU(n_classes)
+        self.n_classes = n_classes
+        self.iou_fn = torchmetrics.IoU(
+            n_classes,
+            reduction='elementwise_mean'  # if not full_metrics else 'none'
+        )
         self.dice_fn = torchmetrics.F1(n_classes, mdmc_average='samplewise')
+        self.iou_fn.to(device)
+        self.dice_fn.to(device)
         self.reset()
 
     def calculate(self, output, target):
@@ -311,8 +324,40 @@ class MultiClassSegmentationTracker(MetricTracker):
         output = F.softmax(output, dim=1)
         output = torch.argmax(output, dim=1)
 
-        self.metrics['IoU'] = self.batch_average(self.iou_fn(output, target), 'IoU')
+        iou_ = self.iou_fn(output, target)
+        self.metrics['IoU'] = self.batch_average(iou_, 'IoU')
         self.metrics["Dice"] = self.batch_average(self.dice_fn(output, target), 'Dice')
+        return self.metrics
+
+
+class MCMLSegmentationTracker(MultiClassSegmentationTracker):
+    """Tracks metrics for segmentation performance.
+    """
+    def __init__(self, full_metrics=False, n_classes=10, device='cuda:0'):
+        super().__init__(full_metrics=full_metrics, n_classes=n_classes)
+
+    def calculate(self, output, target):
+        """Calculates metrics for given batch
+        """
+        target = target.detach()
+        target = target.round()
+        target = target.to(torch.int32)
+        output = output.detach()
+        output = torch.sigmoid(output)
+
+        iou_ = self.iou_fn(output, target)
+
+        iou_ = torch.tensor([
+            self.iou_fn(
+                output[:, i].contiguous(),
+                target[:, i].contiguous()
+            ) for i in range(self.n_classes)
+        ])
+        if not self.full_metrics:
+            iou_ = iou_.mean()
+
+        self.metrics['IoU'] = self.batch_average(iou_, 'IoU')
+        # self.metrics["Dice"] = self.batch_average(self.dice_fn(output, target), 'Dice')
         return self.metrics
 
 
