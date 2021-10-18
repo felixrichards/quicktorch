@@ -3,6 +3,7 @@ import torch.nn.functional as F
 import torch.nn as nn
 
 from quicktorch.models import Model
+from quicktorch.modules.utils import RemovePadding
 from quicktorch.modules.attention.attention import (
     Disassemble,
     Reassemble,
@@ -19,11 +20,12 @@ class DAFMSPlain(Model):
     def __init__(self, n_channels=1, base_channels=64, n_classes=1, pad_to_remove=64, scale=None,
                  **kwargs):
         super().__init__(**kwargs)
+        print(f'{n_classes=}')
         self.preprocess = scale
 
         self.disassemble = Disassemble()
         self.reassemble = Reassemble()
-        self.p = pad_to_remove // 2
+        self.strip = RemovePadding(pad_to_remove)
 
         self.down1 = nn.Sequential(
             nn.Conv2d(n_channels, base_channels, 3, padding=1),
@@ -40,33 +42,33 @@ class DAFMSPlain(Model):
             nn.BatchNorm2d(base_channels * 2),
             nn.ReLU(inplace=True),
             nn.MaxPool2d(2),
-            nn.Conv2d(base_channels * 2, base_channels * 2 ** 2, 3, padding=1),
-            nn.BatchNorm2d(base_channels * 2 ** 2),
+            nn.Conv2d(base_channels * 2, base_channels * 3, 3, padding=1),
+            nn.BatchNorm2d(base_channels * 3),
             nn.ReLU(inplace=True),
-            nn.Conv2d(base_channels * 2 ** 2, base_channels * 2 ** 2, 3, padding=1),
-            nn.BatchNorm2d(base_channels * 2 ** 2),
+            nn.Conv2d(base_channels * 3, base_channels * 3, 3, padding=1),
+            nn.BatchNorm2d(base_channels * 3),
             nn.ReLU(inplace=True),
             nn.MaxPool2d(2),
-            nn.Conv2d(base_channels * 2 ** 2, base_channels * 2 ** 3, 3, padding=1),
-            nn.BatchNorm2d(base_channels * 2 ** 3),
+            nn.Conv2d(base_channels * 3, base_channels * 4, 3, padding=1),
+            nn.BatchNorm2d(base_channels * 4),
             nn.ReLU(inplace=True),
-            nn.Conv2d(base_channels * 2 ** 3, base_channels * 2 ** 3, 3, padding=1),
-            nn.BatchNorm2d(base_channels * 2 ** 3),
+            nn.Conv2d(base_channels * 4, base_channels * 4, 3, padding=1),
+            nn.BatchNorm2d(base_channels * 4),
             nn.ReLU(inplace=True),
             nn.MaxPool2d(2),
         )
         self.conv1_3 = nn.Sequential(
-            nn.Conv2d(base_channels * 2 ** 3, base_channels, kernel_size=1),
+            nn.Conv2d(base_channels * 4, base_channels, kernel_size=1),
             nn.BatchNorm2d(base_channels),
             nn.ReLU(inplace=True)
         )
         self.conv1_2 = nn.Sequential(
-            nn.Conv2d(base_channels * 2 ** 3, base_channels, kernel_size=1),
+            nn.Conv2d(base_channels * 4, base_channels, kernel_size=1),
             nn.BatchNorm2d(base_channels),
             nn.ReLU(inplace=True)
         )
         self.conv1_1 = nn.Sequential(
-            nn.Conv2d(base_channels * 2 ** 3, base_channels, kernel_size=1),
+            nn.Conv2d(base_channels * 4, base_channels, kernel_size=1),
             nn.BatchNorm2d(base_channels),
             nn.ReLU(inplace=True)
         )
@@ -259,11 +261,6 @@ class DAFMSPlain(Model):
         predict3 = self.up1(down3)
         predict2 = self.up1(down2)
         predict1 = self.up1(down1)
-
-        if self.p > 0:
-            predict3 = predict3[..., self.p//4:-self.p//4, self.p//4:-self.p//4]
-            predict2 = predict2[..., self.p//4:-self.p//4, self.p//4:-self.p//4]
-            predict1 = predict1[..., self.p//4:-self.p//4, self.p//4:-self.p//4]
         # print(f'{predict1.size()=}, {predict2.size()=}, {predict3.size()=}')
 
         predict3 = self.predict3(predict3)
@@ -273,11 +270,7 @@ class DAFMSPlain(Model):
         predict3 = F.interpolate(predict3, size=output_size[2:], mode='bilinear', align_corners=True)
         predict2 = F.interpolate(predict2, size=output_size[2:], mode='bilinear', align_corners=True)
         predict1 = F.interpolate(predict1, size=output_size[2:], mode='bilinear', align_corners=True)
-
-        if self.p > 0:
-            predict3 = predict3[..., self.p//4:-self.p//4, self.p//4:-self.p//4]
-            predict2 = predict2[..., self.p//4:-self.p//4, self.p//4:-self.p//4]
-            predict1 = predict1[..., self.p//4:-self.p//4, self.p//4:-self.p//4]
+        # print(f'{predict1.size()=}, {predict2.size()=}, {predict3.size()=}')
 
         refine3 = self.reassemble(self.reassemble(refine3))
         refine2 = self.reassemble(refine2)
@@ -296,6 +289,14 @@ class DAFMSPlain(Model):
         predict3_2 = F.interpolate(predict3_2, size=output_size[2:], mode='bilinear', align_corners=True)
         predict2_2 = F.interpolate(predict2_2, size=output_size[2:], mode='bilinear', align_corners=True)
         predict1_2 = F.interpolate(predict1_2, size=output_size[2:], mode='bilinear', align_corners=True)
+        # print(f'{predict1_2.size()=}, {predict2_2.size()=}, {predict3_2.size()=}')
+
+        predict3 = self.strip(predict3)
+        predict2 = self.strip(predict2)
+        predict1 = self.strip(predict1)
+        predict3_2 = self.strip(predict3_2)
+        predict2_2 = self.strip(predict2_2)
+        predict1_2 = self.strip(predict1_2)
 
         if self.training:
             return (
@@ -331,4 +332,4 @@ class DAFMSPlain(Model):
                 )
             )
         else:
-            return ((predict1_2 + predict2_2 + predict3_2) / 3)
+            return (predict1_2 + predict2_2 + predict3_2) / 3
