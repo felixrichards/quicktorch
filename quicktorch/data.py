@@ -242,7 +242,7 @@ def bsd(batch_size=32, num_workers=0, transform=None, dir='../data/bsd500/',
     if test:
         dataloader = torch.utils.data.DataLoader(
             BSD500(dir, test=True, transform=transform, padding=padding),
-            batch_size=batch_size, shuffle=True,
+            batch_size=batch_size, shuffle=False,
             pin_memory=True, num_workers=num_workers,
         )
         return dataloader
