@@ -1,74 +1,196 @@
+import sys
+from collections import OrderedDict
+
 import torch
 import torch.nn.functional as F
 import torch.nn as nn
+import quicktorch.modules.attention.attention
 
 from quicktorch.models import Model
 from quicktorch.modules.utils import RemovePadding
 from quicktorch.modules.attention.attention import (
-    Disassemble,
     Reassemble,
     _DecoderBlock,
     SemanticModule,
-    PAM_Module,
-    CAM_Module,
-    AttentionLayer,
-    MultiConv
+    MultiConv,
+    GuidedAttention
 )
+from quicktorch.modules.attention.utils import ResNet50Features, StandardFeatures
 
 
-class DAFMSPlain(Model):
-    def __init__(self, n_channels=1, base_channels=64, n_classes=1, pad_to_remove=64, scale=None,
+def get_backbone(key):
+    return getattr(sys.modules[__name__], f'Attention{key}')
+
+
+def get_attention_head(key):
+    return getattr(sys.modules[quicktorch.modules.attention.attention.__name__], f'{key}AttentionHead')
+
+
+def get_attention_mod(key):
+    return getattr(sys.modules[quicktorch.modules.attention.attention.__name__], f'{key}Attention')
+
+
+def create_attention_backbone(
+    **kwargs,
+):
+    backbone_cls = get_backbone(kwargs['backbone'])
+    kwargs['attention_head'] = get_attention_head(kwargs['attention_head'])
+    kwargs['attention_mod'] = get_attention_mod(kwargs['attention_mod'])
+    return backbone_cls(**kwargs)
+
+
+class AttModel(Model):
+    def __init__(self, n_channels=1, base_channels=64, n_classes=1, pad_to_remove=64, scale=None, backbone='MS',
+                 attention_head='Dual', attention_mod='Guided', scales=3,
                  **kwargs):
         super().__init__(**kwargs)
-        print(f'{n_classes=}')
-        self.preprocess = scale
+        print(base_channels)
 
-        self.disassemble = Disassemble()
-        self.reassemble = Reassemble()
-        self.strip = RemovePadding(pad_to_remove)
+        if type(scales) is int:
+            scales = list(range(scales))
 
-        self.down1 = nn.Sequential(
-            nn.Conv2d(n_channels, base_channels, 3, padding=1),
-            nn.BatchNorm2d(base_channels),
-            nn.ReLU(inplace=True),
-            nn.Conv2d(base_channels, base_channels, 3, padding=1),
-            nn.BatchNorm2d(base_channels),
-            nn.ReLU(inplace=True),
-            nn.MaxPool2d(2),
-            nn.Conv2d(base_channels, base_channels * 2, 3, padding=1),
-            nn.BatchNorm2d(base_channels * 2),
-            nn.ReLU(inplace=True),
-            nn.Conv2d(base_channels * 2, base_channels * 2, 3, padding=1),
-            nn.BatchNorm2d(base_channels * 2),
-            nn.ReLU(inplace=True),
-            nn.MaxPool2d(2),
-            nn.Conv2d(base_channels * 2, base_channels * 3, 3, padding=1),
-            nn.BatchNorm2d(base_channels * 3),
-            nn.ReLU(inplace=True),
-            nn.Conv2d(base_channels * 3, base_channels * 3, 3, padding=1),
-            nn.BatchNorm2d(base_channels * 3),
-            nn.ReLU(inplace=True),
-            nn.MaxPool2d(2),
-            nn.Conv2d(base_channels * 3, base_channels * 4, 3, padding=1),
-            nn.BatchNorm2d(base_channels * 4),
-            nn.ReLU(inplace=True),
-            nn.Conv2d(base_channels * 4, base_channels * 4, 3, padding=1),
-            nn.BatchNorm2d(base_channels * 4),
-            nn.ReLU(inplace=True),
-            nn.MaxPool2d(2),
+        self.backbone_key = backbone
+        self.backbone = create_attention_backbone(
+            n_channels=n_channels,
+            base_channels=base_channels,
+            backbone=backbone,
+            scale=scale,
+            scales=scales,
+            attention_mod=attention_mod,
+            attention_head=attention_head
         )
-        self.conv1_3 = nn.Sequential(
+        self.strip = RemovePadding(pad_to_remove)
+        self.scales = scales
+
+        self.predicts = nn.ModuleList([nn.Conv2d(base_channels, n_classes, kernel_size=1) for _ in range(len(scales))])
+        self.refines = nn.ModuleList([nn.Conv2d(base_channels, n_classes, kernel_size=1) for _ in range(len(scales))])
+
+    def forward(self, x):
+        output_size = x.size()
+        segs, refined_segs, aux_outs = self.backbone(x)
+
+        segs = [predict(seg) for predict, seg in zip(self.predicts, segs)]
+        refined_segs = [refine(seg) for refine, seg in zip(self.refines, refined_segs)]
+
+        segs = [F.interpolate(seg, size=output_size[2:]) for seg in segs]
+        refined_segs = [F.interpolate(seg, size=output_size[2:]) for seg in refined_segs]
+
+        segs = [self.strip(seg) for seg in segs]
+        refined_segs = [self.strip(seg) for seg in refined_segs]
+
+        if self.training:
+            return (
+                segs + refined_segs,
+                aux_outs
+            )
+        else:
+            return sum(refined_segs) / len(refined_segs)
+
+
+class AttentionMS(Model):
+    def __init__(self, n_channels=1, base_channels=64, scale=None,
+                 scales=[0, 1, 2], attention_mod=GuidedAttention,
+                 attention_head=None, rcnn=False,
+                 **kwargs):
+        super().__init__(**kwargs)
+        self.preprocess = scale
+        self.rcnn = rcnn
+        self.scales = scales
+
+        self.reassemble = Reassemble()
+
+        self.features = StandardFeatures(n_channels, base_channels)
+        print(sum(p.numel() for p in self.features.parameters() if p.requires_grad))
+
+        self.standardises = nn.ModuleList([nn.Sequential(
             nn.Conv2d(base_channels * 4, base_channels, kernel_size=1),
+            nn.BatchNorm2d(base_channels),
+            nn.ReLU(inplace=True)
+        ) for _ in range(len(scales))])
+
+        self.up2 = _DecoderBlock(base_channels, base_channels)
+        self.up1 = _DecoderBlock(base_channels, base_channels)
+
+        self.sem_mod1 = SemanticModule(base_channels * 2)
+        self.sem_mod2 = SemanticModule(base_channels * 2)
+
+        #  Stacked Attention: Tie SemanticModules across weights
+        self.attention_heads = nn.ModuleList([
+            attention_mod(base_channels, s, self.sem_mod1, self.sem_mod2, attention_head)
+            for s in scales
+        ])
+
+        self.fuse = MultiConv(len(scales) * base_channels, base_channels, False)
+
+    def forward(self, x):
+        if self.preprocess is not None:
+            x = self.preprocess(x)
+        # Create downscaled copies
+        downs = [F.interpolate(
+            x,
+            scale_factor=1/2**s,
+            recompute_scale_factor=True
+        ) if s != 0 else x for s in self.scales]
+        # print(', '.join([f'{down.size()=}' for down in downs]))
+
+        # Generate features
+        downs = [self.features(down) for down in downs]
+        # print(', '.join([f'{down.size()=}' for down in downs]))
+
+        downs = [standardise(down) for standardise, down in zip(self.standardises, downs)]
+        # print(', '.join([f'{down.size()=}' for down in downs]))
+
+        # Align scales
+        fused = self.fuse(torch.cat([
+            downs[0],
+            *[
+                F.interpolate(down, downs[0].size()[-2:]) for down in downs[1:]
+            ]
+        ], 1))
+        # print(f'{fused.size()=}')
+        refined_segs, aux_outs = zip(*[
+            att_head(down, fused) for att_head, down in zip(self.attention_heads, downs)
+        ])
+
+        # print(f'{down1.size()=}, {down2.size()=}, {down3.size()=}')
+        segs = [self.up1(down) for down in downs]
+        # print(f'{predict1.size()=}, {predict2.size()=}, {predict3.size()=}')
+
+        refined_segs = [self.up2(seg) for seg in refined_segs]
+
+        if self.rcnn:
+            out = OrderedDict({
+                s: torch.cat((seg, ref_seg), dim=1) for s, seg, ref_seg in zip(self.scales, segs, refined_segs)
+            })
+            out.update({'aux_outs': aux_outs})
+            return out
+        return segs, refined_segs, aux_outs
+
+
+class AttentionResNet(Model):
+    def __init__(self, n_channels=1, base_channels=64, scale=None, rcnn=False,
+                 **kwargs):
+        super().__init__(**kwargs)
+        self.preprocess = scale
+        self.rcnn = rcnn
+        self.scales = [0, 1, 2]
+
+        self.reassemble = Reassemble()
+
+        self.features = ResNet50Features(n_channels)
+        self.pool = nn.MaxPool2d(2, 2)
+        self.conv1_3 = nn.Sequential(
+            nn.Conv2d(512, base_channels, kernel_size=1),
             nn.BatchNorm2d(base_channels),
             nn.ReLU(inplace=True)
         )
         self.conv1_2 = nn.Sequential(
-            nn.Conv2d(base_channels * 4, base_channels, kernel_size=1),
+            nn.Conv2d(1024, base_channels, kernel_size=1),
             nn.BatchNorm2d(base_channels),
             nn.ReLU(inplace=True)
         )
         self.conv1_1 = nn.Sequential(
-            nn.Conv2d(base_channels * 4, base_channels, kernel_size=1),
+            nn.Conv2d(2048, base_channels, kernel_size=1),
             nn.BatchNorm2d(base_channels),
             nn.ReLU(inplace=True)
         )
@@ -76,78 +198,23 @@ class DAFMSPlain(Model):
         self.up2 = _DecoderBlock(base_channels, base_channels)
         self.up1 = _DecoderBlock(base_channels, base_channels)
 
-        self.conv8_2 = nn.Conv2d(base_channels, base_channels, kernel_size=1)
-        self.conv8_3 = nn.Conv2d(base_channels, base_channels, kernel_size=1)
-        self.conv8_4 = nn.Conv2d(base_channels, base_channels, kernel_size=1)
-        self.conv8_12 = nn.Conv2d(base_channels, base_channels, kernel_size=1)
-        self.conv8_13 = nn.Conv2d(base_channels, base_channels, kernel_size=1)
-        self.conv8_14 = nn.Conv2d(base_channels, base_channels, kernel_size=1)
+        self.sem_mod1 = SemanticModule(base_channels * 2)
+        self.sem_mod2 = SemanticModule(base_channels * 2)
 
-        self.semanticModule_1_1 = SemanticModule(base_channels * 2)
+        #  Stacked Attention: Tie SemanticModules across weights
+        self.guided_attention1 = GuidedAttention(base_channels, 0, self.sem_mod1, self.sem_mod2)
+        self.guided_attention2 = GuidedAttention(base_channels, 1, self.sem_mod1, self.sem_mod2)
+        self.guided_attention3 = GuidedAttention(base_channels, 2, self.sem_mod1, self.sem_mod2)
 
-        self.conv_sem_1_2 = nn.Conv2d(base_channels * 2, base_channels, kernel_size=3, padding=1)
-        self.conv_sem_1_3 = nn.Conv2d(base_channels * 2, base_channels, kernel_size=3, padding=1)
-        self.conv_sem_1_4 = nn.Conv2d(base_channels * 2, base_channels, kernel_size=3, padding=1)
-
-        #Dual Attention mechanism
-        self.pam_attention_1_1 = AttentionLayer(base_channels, PAM_Module)
-        self.cam_attention_1_1 = AttentionLayer(base_channels, CAM_Module)
-        self.pam_attention_1_2 = AttentionLayer(base_channels, PAM_Module)
-        self.cam_attention_1_2 = AttentionLayer(base_channels, CAM_Module)
-        self.pam_attention_1_3 = AttentionLayer(base_channels, PAM_Module)
-        self.cam_attention_1_3 = AttentionLayer(base_channels, CAM_Module)
-
-        self.semanticModule_2_1 = SemanticModule(base_channels * 2)
-
-        self.conv_sem_2_2 = nn.Conv2d(base_channels * 2, base_channels, kernel_size=3, padding=1)
-        self.conv_sem_2_3 = nn.Conv2d(base_channels * 2, base_channels, kernel_size=3, padding=1)
-        self.conv_sem_2_4 = nn.Conv2d(base_channels * 2, base_channels, kernel_size=3, padding=1)
-
-        self.pam_attention_2_1 = AttentionLayer(base_channels, PAM_Module)
-        self.cam_attention_2_1 = AttentionLayer(base_channels, CAM_Module)
-        self.pam_attention_2_2 = AttentionLayer(base_channels, PAM_Module)
-        self.cam_attention_2_2 = AttentionLayer(base_channels, CAM_Module)
-        self.pam_attention_2_3 = AttentionLayer(base_channels, PAM_Module)
-        self.cam_attention_2_3 = AttentionLayer(base_channels, CAM_Module)
-
-        self.fuse1 = MultiConv(3 * base_channels, base_channels, False)
-
-        self.predict3 = nn.Conv2d(base_channels, n_classes, kernel_size=1)
-        self.predict2 = nn.Conv2d(base_channels, n_classes, kernel_size=1)
-        self.predict1 = nn.Conv2d(base_channels, n_classes, kernel_size=1)
-
-        self.predict3_2 = nn.Conv2d(base_channels, n_classes, kernel_size=1)
-        self.predict2_2 = nn.Conv2d(base_channels, n_classes, kernel_size=1)
-        self.predict1_2 = nn.Conv2d(base_channels, n_classes, kernel_size=1)
+        self.fuse = MultiConv(3 * base_channels, base_channels, False)
 
     def forward(self, x):
         if self.preprocess is not None:
             x = self.preprocess(x)
-        output_size = x.size()
-        # Create downscaled copies
-        down3 = x
-        down2 = F.interpolate(
-            x,
-            scale_factor=1/2
-        )
-        down1 = F.interpolate(
-            x,
-            scale_factor=1/4
-        )
 
         # Generate features
-        # print(f'{down1.size()=}, {down2.size()=}, {down3.size()=}')
-        down1 = self.down1(down1)
-        down2 = self.down1(down2)
-        down3 = self.down1(down3)
-
-        # down2 = self.align2(down2)
-        # down3 = self.align3(down3)
-        # print(f'{down1.size()=}, {down2.size()=}, {down3.size()=}')
-
-        # down2 = self.reassemble(down2)
-        # down3 = self.reassemble(self.reassemble(down3))
-        # print(f'{down1.size()=}, {down2.size()=}, {down3.size()=}')
+        down1, down2, down3 = self.features(x)
+        down1, down2, down3 = self.pool(down1), self.pool(down2), self.pool(down3)
 
         down1 = self.conv1_1(down1)
         down2 = self.conv1_2(down2)
@@ -155,107 +222,16 @@ class DAFMSPlain(Model):
         # print(f'{down1.size()=}, {down2.size()=}, {down3.size()=}')
 
         # Align scales
-        fuse1 = self.fuse1(torch.cat((
+        fused = self.fuse(torch.cat((
             down3,
             F.interpolate(down2, down3.size()[-2:]),
             F.interpolate(down1, down3.size()[-2:])
         ), 1))
-        # print(f'{fuse1.size()=}')
+        # print(f'{fused.size()=}')
 
-        # fuse1_3 = self.disassemble(self.disassemble(fuse1))
-        # fuse1_2 = self.disassemble(F.interpolate(fuse1, size=down2.size()[-2:]))
-        # fuse1_1 = F.interpolate(fuse1, size=down1.size()[-2:])
-        # print(f'{fuse1_1.size()=}, {fuse1_2.size()=}, {fuse1_3.size()=}')
-
-        fused1_3 = torch.cat((
-            self.disassemble(self.disassemble(down3)),
-            self.disassemble(self.disassemble(fuse1))
-        ), dim=1)
-        # print(f'First attention: {fused1_3.size()=}')
-        semVector_1_2, semanticModule_1_2 = self.semanticModule_1_1(fused1_3)
-        attention1_3 = self.conv8_2(
-            (
-                self.pam_attention_1_3(fused1_3) +
-                self.cam_attention_1_3(fused1_3)
-            ) *
-            self.conv_sem_1_2(semanticModule_1_2)
-        )
-        # print(f'{attention1_3.size()=}')
-
-        fused2_3 = torch.cat((
-            self.disassemble(self.disassemble(down3)),
-            attention1_3 * self.disassemble(self.disassemble(fuse1))
-        ), dim=1)
-        # print(f'First refine: {fused2_3.size()=}')
-        semVector_2_2, semanticModule_2_2 = self.semanticModule_2_1(fused2_3)
-        refine3 = self.conv8_12(
-            (
-                self.pam_attention_2_3(fused2_3) +
-                self.cam_attention_2_3(fused2_3)
-            ) *
-            self.conv_sem_2_2(semanticModule_2_2)
-        )
-        # print(f'{refine3.size()=}')
-
-        fused1_2 = torch.cat((
-            self.disassemble(down2),
-            self.disassemble(F.interpolate(fuse1, size=down2.size()[-2:]))
-        ), dim=1)
-        # print(f'Second attention: {fused1_2.size()=}')
-        semVector_1_3, semanticModule_1_3 = self.semanticModule_1_1(fused1_2)
-        attention1_2 = self.conv8_3(
-            (
-                self.pam_attention_1_2(fused1_2) +
-                self.cam_attention_1_2(fused1_2)
-            ) *
-            self.conv_sem_1_3(semanticModule_1_3)
-        )
-        # print(f'{attention1_2.size()=}')
-
-        fused2_2 = torch.cat((
-            self.disassemble(down2),
-            attention1_2 * self.disassemble(F.interpolate(fuse1, size=down2.size()[-2:]))
-        ), dim=1)
-        # print(f'Second refine: {fused2_2.size()=}')
-        semVector_2_3, semanticModule_2_3 = self.semanticModule_2_1(fused2_2)
-        refine2 = self.conv8_13(
-            (
-                self.pam_attention_2_2(fused2_2) +
-                self.cam_attention_2_2(fused2_2)
-            ) *
-            self.conv_sem_2_3(semanticModule_2_3)
-        )
-        # print(f'{refine2.size()=}')
-
-        fused1_1 = torch.cat((
-            down1,
-            F.interpolate(fuse1, size=down1.size()[-2:])
-        ), dim=1)
-        # print(f'Third attention: {fused1_1.size()=}')
-        semVector_1_4, semanticModule_1_4 = self.semanticModule_1_1(fused1_1)
-        attention1_1 = self.conv8_4(
-            (
-                self.pam_attention_1_1(fused1_1) +
-                self.cam_attention_1_1(fused1_1)
-            ) *
-            self.conv_sem_1_4(semanticModule_1_4)
-        )
-        # print(f'{attention1_1.size()=}')
-
-        fused2_1 = torch.cat((
-            down1,
-            attention1_1 * F.interpolate(fuse1, size=down1.size()[-2:])
-        ), dim=1)
-        # print(f'Third refine: {fused2_1.size()=}')
-        semVector_2_4, semanticModule_2_4 = self.semanticModule_2_1(fused2_1)
-        refine1 = self.conv8_14(
-            (
-                self.pam_attention_2_1(fused2_1) +
-                self.cam_attention_2_1(fused2_1)
-            ) *
-            self.conv_sem_2_4(semanticModule_2_4)
-        )
-        # print(f'{refine1.size()=}')
+        refine3, aux_outs3 = self.guided_attention3(down3, fused)
+        refine2, aux_outs2 = self.guided_attention2(down2, fused)
+        refine1, aux_outs1 = self.guided_attention1(down1, fused)
 
         # print(f'{down1.size()=}, {down2.size()=}, {down3.size()=}')
         predict3 = self.up1(down3)
@@ -263,73 +239,25 @@ class DAFMSPlain(Model):
         predict1 = self.up1(down1)
         # print(f'{predict1.size()=}, {predict2.size()=}, {predict3.size()=}')
 
-        predict3 = self.predict3(predict3)
-        predict2 = self.predict2(predict2)
-        predict1 = self.predict1(predict1)
-        # print(f'{predict1.size()=}, {predict2.size()=}, {predict3.size()=}')
-        predict3 = F.interpolate(predict3, size=output_size[2:], mode='bilinear', align_corners=True)
-        predict2 = F.interpolate(predict2, size=output_size[2:], mode='bilinear', align_corners=True)
-        predict1 = F.interpolate(predict1, size=output_size[2:], mode='bilinear', align_corners=True)
-        # print(f'{predict1.size()=}, {predict2.size()=}, {predict3.size()=}')
-
-        refine3 = self.reassemble(self.reassemble(refine3))
-        refine2 = self.reassemble(refine2)
+        refine3 = self.up2(refine3)
+        refine2 = self.up2(refine2)
+        refine1 = self.up2(refine1)
         # print(f'{refine1.size()=}, {refine2.size()=}, {refine3.size()=}')
 
-        predict3_2 = self.up2(refine3)
-        predict2_2 = self.up2(refine2)
-        predict1_2 = self.up2(refine1)
-        # print(f'{predict1_2.size()=}, {predict2_2.size()=}, {predict3_2.size()=}')
-
-        predict3_2 = self.predict3_2(predict3_2)
-        predict2_2 = self.predict2_2(predict2_2)
-        predict1_2 = self.predict1_2(predict1_2)
-        # print(f'{predict1_2.size()=}, {predict2_2.size()=}, {predict3_2.size()=}')
-
-        predict3_2 = F.interpolate(predict3_2, size=output_size[2:], mode='bilinear', align_corners=True)
-        predict2_2 = F.interpolate(predict2_2, size=output_size[2:], mode='bilinear', align_corners=True)
-        predict1_2 = F.interpolate(predict1_2, size=output_size[2:], mode='bilinear', align_corners=True)
-        # print(f'{predict1_2.size()=}, {predict2_2.size()=}, {predict3_2.size()=}')
-
-        predict3 = self.strip(predict3)
-        predict2 = self.strip(predict2)
-        predict1 = self.strip(predict1)
-        predict3_2 = self.strip(predict3_2)
-        predict2_2 = self.strip(predict2_2)
-        predict1_2 = self.strip(predict1_2)
-
-        if self.training:
-            return (
-                (
-                    semVector_1_2,
-                    semVector_1_3,
-                    semVector_1_4,
-                ), (
-                    semVector_2_2,
-                    semVector_2_3,
-                    semVector_2_4,
-                ), (
-                   fused1_1,
-                   fused1_2,
-                   fused1_3,
-                   fused2_1,
-                   fused2_2,
-                   fused2_3,
-                ), (
-                   semanticModule_1_4,
-                   semanticModule_1_3,
-                   semanticModule_1_2,
-                   semanticModule_2_4,
-                   semanticModule_2_3,
-                   semanticModule_2_2,
-                ), (
-                   predict1,
-                   predict2,
-                   predict3,
-                   predict1_2,
-                   predict2_2,
-                   predict3_2,
-                )
-            )
-        else:
-            return (predict1_2 + predict2_2 + predict3_2) / 3
+        aux_outs = (aux_outs1, aux_outs2, aux_outs3)
+        if self.rcnn:
+            return OrderedDict({
+                '0': torch.cat((predict1, refine1), dim=1),
+                '1': torch.cat((predict2, refine2), dim=1),
+                '2': torch.cat((predict3, refine3), dim=1),
+                'aux_outs': aux_outs,
+            })
+        return (
+            predict1,
+            predict2,
+            predict3,
+        ), (
+            refine1,
+            refine2,
+            refine3,
+        ), aux_outs

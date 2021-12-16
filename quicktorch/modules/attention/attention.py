@@ -16,9 +16,6 @@ class _EncoderBlock(nn.Module):
             nn.Conv2d(out_channels, out_channels, kernel_size=3, padding=1),
             nn.BatchNorm2d(out_channels),
             nn.ReLU(inplace=True),
-            nn.Conv2d(out_channels, out_channels, kernel_size=3, padding=1),
-            nn.BatchNorm2d(out_channels),
-            nn.ReLU(inplace=True),
         ]
         if dropout:
             layers.append(nn.Dropout())
@@ -37,9 +34,6 @@ class _DecoderBlock(nn.Module):
         super(_DecoderBlock, self).__init__()
         self.decode = nn.Sequential(
             nn.Conv2d(in_channels, out_channels, kernel_size=3, padding=1),
-            nn.BatchNorm2d(out_channels),
-            nn.ReLU(inplace=True),
-            nn.Conv2d(out_channels, out_channels, kernel_size=3, padding=1),
             nn.BatchNorm2d(out_channels),
             nn.ReLU(inplace=True),
             nn.Conv2d(out_channels, out_channels, kernel_size=3, padding=1),
@@ -71,7 +65,7 @@ class SemanticModule(nn.Module):
         enc2 = self.enc2(enc1)
 
         dec2 = self.dec2(enc2)
-        dec1 = self.dec1(F.upsample(dec2, enc1.size()[2:], mode='bilinear'))
+        dec1 = self.dec1(F.interpolate(dec2, enc1.size()[2:]))
 
         return enc2.view(-1), dec1
 
@@ -189,7 +183,7 @@ class MultiConv(nn.Module):
         returns the refined convolution tensor
     """
     def __init__(self, in_channels, out_channels, attn=True):
-        super(MultiConv, self).__init__()
+        super().__init__()
 
         self.fuse_attn = nn.Sequential(
             nn.Conv2d(in_channels, out_channels, kernel_size=3, padding=1),
@@ -205,6 +199,150 @@ class MultiConv(nn.Module):
 
     def forward(self, x):
         return self.fuse_attn(x)
+
+
+class DualAttentionHead(nn.Module):
+    """
+    """
+    def __init__(self, channels):
+        super().__init__()
+        self.pam = AttentionLayer(channels, PAM_Module)
+        self.cam = AttentionLayer(channels, CAM_Module)
+        self.conv = nn.Conv2d(channels, channels, kernel_size=1)
+        self.conv_semantic = nn.Conv2d(channels * 2, channels, kernel_size=3, padding=1)
+
+    def forward(self, fused, semantic):
+        return self.conv(
+            (
+                self.pam(fused) +
+                self.cam(fused)
+            ) *
+            self.conv_semantic(semantic)
+        )
+
+
+class PositionAttentionHead(nn.Module):
+    """
+    """
+    def __init__(self, channels):
+        super().__init__()
+        self.pam = AttentionLayer(channels, PAM_Module)
+        self.conv = nn.Conv2d(channels, channels, kernel_size=1)
+        self.conv_semantic = nn.Conv2d(channels * 2, channels, kernel_size=3, padding=1)
+
+    def forward(self, fused, semantic):
+        return self.conv(
+            (
+                self.pam(fused)
+            ) *
+            self.conv_semantic(semantic)
+        )
+
+
+class ChannelAttentionHead(nn.Module):
+    """
+    """
+    def __init__(self, channels):
+        super().__init__()
+        self.cam = AttentionLayer(channels, CAM_Module)
+        self.conv = nn.Conv2d(channels, channels, kernel_size=1)
+        self.conv_semantic = nn.Conv2d(channels * 2, channels, kernel_size=3, padding=1)
+
+    def forward(self, fused, semantic):
+        return self.conv(
+            (
+                self.cam(fused)
+            ) *
+            self.conv_semantic(semantic)
+        )
+
+
+class StandardAttention(nn.Module):
+    """
+    """
+    def __init__(self, channels, disassembles=0, semantic_module1=None, attention_head=None, **kwargs):
+        super().__init__()
+        self.semantic_attention1 = SemanticAttentionBody(channels, disassembles, semantic_module1, attention_head)
+        self.reassemble = Assemble(-disassembles)
+
+    def forward(self, x, fused):
+        attention, _, _, _ = self.semantic_attention1(x, fused)
+        attention = self.reassemble(attention)
+        return attention, None
+
+
+class GuidedAttention(nn.Module):
+    """
+    """
+    def __init__(self, channels, disassembles=0, semantic_module1=None, semantic_module2=None, attention_head=None):
+        super().__init__()
+        self.semantic_attention1 = SemanticAttentionBody(channels, disassembles, semantic_module1, attention_head)
+        self.semantic_attention2 = SemanticAttentionBody(channels, disassembles, semantic_module2, attention_head)
+        self.reassemble = Assemble(-disassembles)
+
+    def forward(self, x, fused):
+        attention, semv1, semo1, comb1 = self.semantic_attention1(x, fused)
+        refined_attention, semv2, semo2, comb2 = self.semantic_attention2(x, fused, att=attention)
+        refined_attention = self.reassemble(refined_attention)
+        return refined_attention, {
+            'in_semantic_vectors': semv1,
+            'out_semantic_vectors': semv2,
+            'in_attention_encodings': torch.cat([comb1, comb2], dim=1),
+            'out_attention_encodings': torch.cat([semo1, semo2], dim=1),
+        }
+
+
+class SemanticAttentionBody(nn.Module):
+    """
+    """
+    def __init__(self, channels, disassembles=0, semantic_module=None, attention_head=None):
+        super().__init__()
+        self.combine = CombineScales(disassembles)
+        if semantic_module is None:
+            semantic_module = SemanticModule(channels * 2)
+        self.get_semantic = semantic_module
+        if attention_head is None:
+            attention_head = DualAttentionHead
+        self.attention_head = attention_head(channels)
+
+    def forward(self, x, fused, att=None):
+        combined = self.combine(x, fused, att=att)
+        semantic_vector, semantic_output = self.get_semantic(combined)
+        attention = self.attention_head(combined, semantic_output)
+        return attention, semantic_vector, semantic_output, combined
+
+
+class CombineScales(nn.Module):
+    """
+    """
+    def __init__(self, disassembles=0):
+        super().__init__()
+        self.disassemble = Assemble(disassembles)
+
+    def forward(self, x, other, att=None):
+        other = F.interpolate(other, size=x.size()[-2:])
+        x, other = self.disassemble(x), self.disassemble(other)
+        if att is not None:
+            other = other * att
+        return torch.cat((
+            x,
+            other
+        ), dim=1)
+
+
+class Assemble(nn.Module):
+    def __init__(self, disassembles=0):
+        super().__init__()
+        self.d = abs(disassembles)
+        if disassembles > 0:
+            self.assemble = Disassemble()
+        elif disassembles < 0:
+            self.assemble = Reassemble()
+
+    def forward(self, x):
+        for _ in range(self.d):
+            x = self.assemble(x)
+        return x
 
 
 class Disassemble(nn.Module):
