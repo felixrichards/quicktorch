@@ -148,11 +148,11 @@ class Model(nn.Module):
                 print("Consider loading them with torch.load()")
 
     def save(self, name=None, overwrite=False, save_dir=None,
-             checkpoint=None):
+             checkpoint=None, include_epoch=False):
         """Saves a state of the model.
 
         If a checkpoint dict is passed, the epoch number will be appended
-        to the filename, e.g. alexnet.pk < alexnet_epoch1.pk. If no name
+        to the filename, e.g. alexnet.pt < alexnet_epoch1.pt. If no name
         or save_dir is provided the user will be prompted to enter them.
 
         Args:
@@ -204,14 +204,14 @@ class Model(nn.Module):
             else:
                 print("Aborting.")
 
-        name = name.replace('.pk', '')
+        name = name.replace('.pt', '')
 
         save_path = os.path.join(save_dir, name)
         save_obj = {'model_state_dict': self.state_dict()}
         if checkpoint is not None:
             assert isinstance(checkpoint, dict)
             save_obj.update(checkpoint)
-            if "epoch" in save_obj:
+            if "epoch" in save_obj and include_epoch:
                 save_path += "_epoch"+str(save_obj["epoch"])
 
         if not overwrite and os.path.isfile(_add_ext(save_path)):
@@ -434,13 +434,13 @@ class Discriminator(Model):
         return self.discriminate(x)
 
 
-def _add_ext(path, ext='.pk'):
+def _add_ext(path, ext='.pt'):
     if path[len(path)-3:] != ext:
         path += ext
     return path
 
 
-def _remove_ext(path, ext='.pk'):
+def _remove_ext(path, ext='.pt'):
     if path[len(path)-3:] == ext:
         path = path[:len(path)-3]
     return path

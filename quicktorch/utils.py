@@ -1,22 +1,23 @@
 import os
-from urllib.parse import urlparse
-from urllib.request import urlopen
-import zipfile
 import tarfile
-import tempfile
+import yaml
+import zipfile
+
+import matplotlib.pyplot as plt
+import numpy as np
+import PIL
 import torch
 import torch.nn as nn
 import torch.optim as optim
 import torchvision
-import matplotlib.pyplot as plt
-import numpy as np
+
+from sklearn.model_selection import KFold
+from skimage import io
+from urllib.parse import urlparse
+from urllib.request import urlopen
+
 from .metrics import MetricTracker
 from .vis import TrainPlot
-from sklearn.model_selection import KFold
-from sklearn.metrics import jaccard_score
-from skimage import io
-import PIL
-from math import log10
 """This module provides miscellaneous helper functions for neural network
 experimentation, most notably a training function.
 """
@@ -60,14 +61,13 @@ def _handle_sch(sch, running_loss=None, phase='train'):
 
 
 def train(net, input, criterion='default',
-          epochs=5, opt='default', sch=None,
+          epochs=5, start_epoch=0, opt='default', sch=None,
           metrics=None, device="cpu", val_epochs=1,
-          save_best=False, save_all=False, save_last=False):
+          save_best=False, save_last=False):
     """Trains a neural network
 
     This function was written to use extra features added
-    through the quicktorch.Model wrapper, though is still compatible
-    with a naked net.
+    through the quicktorch.Model wrapper.
 
     Args:
         net (torch.nn.Module): Network to be trained.
@@ -78,6 +78,8 @@ def train(net, input, criterion='default',
             Defaults to 'default' which translates to MSE.
         epochs (int, optional): Number of epochs to train over.
             Defaults to 5.
+        start_epoch (int, optional): Epoch starting at (for checkpoints).
+            Defaults to 0.
         opt (torch.optim.Optimizer, optional): Optimiser function.
             Defaults to 'default' which translates to SGD.
         sch (torch.optim._LRScheduler, optional): Learning rate scheduling
@@ -91,16 +93,11 @@ def train(net, input, criterion='default',
             Defaults to 1, corresponding to every epoch.
         save_best (boolean, optional): Saves the model at the best epoch.
             Defaults to False.
-        save_all (boolean, optional): Saves the model at all epochs.
-            Defaults to False.
         save_last (boolean, optional): Saves the model at the final epoch.
             Defaults to False.
 
     Returns:
-        float: Best accuracy of model.
-        int: Epoch which had best accuracy.
-        float: Precision of model at best epoch.
-        float: Recall of model at best epoch.
+        dict: Metrics from metrics object.
     """
     # Put model in training mode
     net.train()
@@ -119,9 +116,6 @@ def train(net, input, criterion='default',
             size['val'] = len(input[1].dataset)
             b_size['train'] = input[0].batch_size
             b_size['val'] = input[1].batch_size
-            # Create temp file for storing best model dict
-            temp_model_file = tempfile.NamedTemporaryFile(mode='wb', delete=False)
-            temp_model_file.close()
         else:
             print("Invalid data format")
             return
@@ -137,7 +131,7 @@ def train(net, input, criterion='default',
     metrics.start(phases)
     best_checkpoint = {}
 
-    for epoch in range(epochs):
+    for epoch in range(start_epoch, epochs):
         print('Epoch {}/{}'.format(epoch+1, epochs))
         print('-' * 15)
 
@@ -160,8 +154,7 @@ def train(net, input, criterion='default',
             for i, data in enumerate(input[j], 0):
                 # Run training process
                 loss, output = perform_pass(net, data, opt,
-                                            criterion, device,
-                                            phase == 'train')
+                                            criterion, device, phase == 'train')
                 running_loss += loss.item()
 
                 metrics.update(output, data[1].to(device))
@@ -191,38 +184,38 @@ def train(net, input, criterion='default',
 
             if len(phases) == 1 or phase == 'val':
                 checkpoint = {
-                    'epoch': epoch+1,
+                    'epoch': epoch + 1,
                     'optimizer_state_dict': opt.state_dict(),
                     'loss': epoch_loss
                 }
-                checkpoint.update(metrics.get_metrics())
+                checkpoint.update({
+                    'metrics': metrics.get_metrics(),
+                })
                 if metrics.is_best():
-                    torch.save(net.state_dict(), temp_model_file.name)
-                    if save_best and not save_all:
-                        best_checkpoint = checkpoint
+                    checkpoint.update({
+                        'best_metrics': metrics.get_best_metrics()
+                    })
+                    net.save(name="best", checkpoint=checkpoint, overwrite=True)
                 metrics.show_best()
 
-                if save_all:
-                    net.save(checkpoint=checkpoint)
+                net.save(name="current", checkpoint=checkpoint, overwrite=True)
+                with open(os.path.join(net.save_dir, 'info.yml'), 'w') as info_file:
+                    yaml.dump({
+                        'epoch': epoch + 1,
+                        'best_metrics': metrics.get_best_metrics(),
+                    }, info_file, default_flow_style=False)
             _handle_sch(sch, epoch_loss, phase)
             metrics.reset(phase, loss=epoch_loss)
 
-    if save_last:
-        net.save(name=net.name+'_last', checkpoint=checkpoint)
-    if 'val' in phases and best_checkpoint is not None and epochs >= val_epochs:
-        net.load_state_dict(torch.load(temp_model_file.name))
-        os.remove(temp_model_file.name)
     # Put model in evaluation mode
     metrics.finish()
     net.eval()
     best_metrics = metrics.get_best_metrics()
-    if save_best:
-        save_path = net.save(checkpoint=best_checkpoint)
-        best_metrics['save_path'] = save_path
+    best_metrics['save_path'] = os.path.join(net.save_dir, 'best.pt')
     return best_metrics
 
 
-def evaluate(net, input, device='cpu', metrics=None, surpress=False):
+def evaluate(net, input, device='cpu', metrics=None, surpress=False, figs_dir=None, figs_labels=None):
     """Evaluates a model on a given input
     """
     net.eval()
@@ -242,11 +235,17 @@ def evaluate(net, input, device='cpu', metrics=None, surpress=False):
     if print_iter == 0:
         print_iter += 1
 
-    for i, data in enumerate(input, 0):
+    for i, data in enumerate(input):
         # Run training process
         with torch.no_grad():
             output = net(data[0].to(device))
         metrics.update(output, data[1].to(device))
+        if figs_dir is not None:
+            if b_size > 1:
+                print('b_size > 1 not implemented')
+            else:
+                lbl = str(i) if figs_labels is None else figs_labels[i]
+                save_prediction_mask(output, figs_dir, lbl)
         del(output)
 
         # Print progress
@@ -264,6 +263,14 @@ def evaluate(net, input, device='cpu', metrics=None, surpress=False):
         print('---')
         print(metrics.progress_str())
     return metrics.get_metrics()
+
+
+def save_prediction_mask(pred, figs_dir, lbl):
+    pred = pred.detach()
+    pred = torch.sigmoid(pred)
+    pred = (pred.cpu().numpy() * 255).astype('uint8')
+    pred = PIL.Image.fromarray(pred[0, 0])
+    pred.save(os.path.join(figs_dir, lbl + '.png'))
 
 
 def train_gan(netG, netD, input, criterion='default',
