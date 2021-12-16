@@ -181,7 +181,10 @@ class MetricTracker():
                     if val.ndim == 0:
                         out[key] = val.item()
                     elif val.ndim == 1:
-                        out[key] = val
+                        if val.shape[0] == 1:
+                            out[key] = val.item()
+                        else:
+                            out[key] = list(val)
                 else:
                     out[key] = val
                     if math.isnan(val):
@@ -308,12 +311,11 @@ class MultiClassSegmentationTracker(MetricTracker):
         self.best_metrics = self.metrics.copy()
         self.n_classes = n_classes
         self.iou_fn = torchmetrics.IoU(
-            n_classes,
+            n_classes if n_classes < 1 else 2,
             reduction='elementwise_mean'  # if not full_metrics else 'none'
         )
-        self.dice_fn = torchmetrics.F1(n_classes, mdmc_average='samplewise')
+        self.dice_fn = dice
         self.iou_fn.to(device)
-        self.dice_fn.to(device)
         self.reset()
 
     def calculate(self, output, target):
