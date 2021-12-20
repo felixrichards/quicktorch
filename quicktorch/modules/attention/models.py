@@ -72,8 +72,8 @@ class AttModel(Model):
         segs = [predict(seg) for predict, seg in zip(self.predicts, segs)]
         refined_segs = [refine(seg) for refine, seg in zip(self.refines, refined_segs)]
 
-        segs = [F.interpolate(seg, size=output_size[2:]) for seg in segs]
-        refined_segs = [F.interpolate(seg, size=output_size[2:]) for seg in refined_segs]
+        segs = [F.interpolate(seg, size=output_size[2:], mode='bilinear') for seg in segs]
+        refined_segs = [F.interpolate(seg, size=output_size[2:], mode='bilinear') for seg in refined_segs]
 
         segs = [self.strip(seg) for seg in segs]
         refined_segs = [self.strip(seg) for seg in refined_segs]
@@ -117,7 +117,7 @@ class AttentionMS(Model):
         #  Stacked Attention: Tie SemanticModules across weights
         self.attention_heads = nn.ModuleList([
             attention_mod(base_channels, s, self.sem_mod1, self.sem_mod2, attention_head)
-            for s in scales
+            for s in scales[::-1]
         ])
 
         self.fuse = MultiConv(len(scales) * base_channels, base_channels, False)
@@ -129,7 +129,8 @@ class AttentionMS(Model):
         downs = [F.interpolate(
             x,
             scale_factor=1/2**s,
-            recompute_scale_factor=True
+            recompute_scale_factor=True,
+            mode='bilinear'
         ) if s != 0 else x for s in self.scales]
         # print(', '.join([f'{down.size()=}' for down in downs]))
 
@@ -144,7 +145,7 @@ class AttentionMS(Model):
         fused = self.fuse(torch.cat([
             downs[0],
             *[
-                F.interpolate(down, downs[0].size()[-2:]) for down in downs[1:]
+                F.interpolate(down, downs[0].size()[-2:], mode='bilinear') for down in downs[1:]
             ]
         ], 1))
         # print(f'{fused.size()=}')
@@ -152,11 +153,12 @@ class AttentionMS(Model):
             att_head(down, fused) for att_head, down in zip(self.attention_heads, downs)
         ])
 
-        # print(f'{down1.size()=}, {down2.size()=}, {down3.size()=}')
+        # print(', '.join([f'{refined_seg.size()=}' for refined_seg in refined_segs]))
         segs = [self.up1(down) for down in downs]
-        # print(f'{predict1.size()=}, {predict2.size()=}, {predict3.size()=}')
+        # print(', '.join([f'{seg.size()=}' for seg in segs]))
 
         refined_segs = [self.up2(seg) for seg in refined_segs]
+        # print(', '.join([f'{refined_seg.size()=}' for refined_seg in refined_segs]))
 
         if self.rcnn:
             out = OrderedDict({
@@ -224,8 +226,8 @@ class AttentionResNet(Model):
         # Align scales
         fused = self.fuse(torch.cat((
             down3,
-            F.interpolate(down2, down3.size()[-2:]),
-            F.interpolate(down1, down3.size()[-2:])
+            F.interpolate(down2, down3.size()[-2:], mode='bilinear'),
+            F.interpolate(down1, down3.size()[-2:], mode='bilinear')
         ), 1))
         # print(f'{fused.size()=}')
 

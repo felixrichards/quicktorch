@@ -65,7 +65,7 @@ class SemanticModule(nn.Module):
         enc2 = self.enc2(enc1)
 
         dec2 = self.dec2(enc2)
-        dec1 = self.dec1(F.interpolate(dec2, enc1.size()[2:]))
+        dec1 = self.dec1(F.interpolate(dec2, enc1.size()[2:], mode='bilinear'))
 
         return enc2.view(-1), dec1
 
@@ -320,7 +320,7 @@ class CombineScales(nn.Module):
         self.disassemble = Assemble(disassembles)
 
     def forward(self, x, other, att=None):
-        other = F.interpolate(other, size=x.size()[-2:])
+        other = F.interpolate(other, size=x.size()[-2:], mode='bilinear')
         x, other = self.disassemble(x), self.disassemble(other)
         if att is not None:
             other = other * att
