@@ -10,13 +10,11 @@ class ConsensusLoss(nn.Module):
         self.beta = beta
         self.lambd = lambd
         self.seg_criterion = seg_criterion
-        if pos_weight is not None:
-            self.seg_criterion.pos_weight = pos_weight
 
     def forward(self, output, target):
         weight = self.loss_weight(target)
-        target[target >= self.eta] = 1.
-        target[target < self.eta] = 0.
+        target.data[target >= self.eta] = 1.
+        target.data[target < self.eta] = 0.
         return (self.seg_criterion(output, target) * weight).mean()
 
     def loss_weight(self, target):
@@ -34,7 +32,7 @@ class PlainConsensusLossMC(ConsensusLoss):
 
     def loss_weight(self, target):
         weight = torch.tensor([1], device=target.device)[None, :, None, None]
-        weight = weight.expand_as(target)
+        weight = weight.expand_as(target) * (target >= 0)
 
         return weight
 
@@ -45,7 +43,7 @@ class ConsensusLossMC(ConsensusLoss):
 
     def loss_weight(self, target):
         weight = torch.tensor([1], device=target.device)[None, :, None, None]
-        weight = weight.expand_as(target) * (target == 0. + 0.49 < target)
+        weight = weight.expand_as(target) * torch.logical_or(target == 0., target > 0.49)
 
         return weight
 
