@@ -56,7 +56,7 @@ class DAFConsensusLoss(DAFLoss):
             vectors in self-guided protocol.
     """
     def __init__(self,
-                 consensus_criterion=ConsensusLossMC(eta=.4, lambd=1.1, beta=None),
+                 consensus_criterion=ConsensusLossMC(eta=.49, lambd=1.1, beta=None),
                  aux_loss=GuidedAuxLoss(),
                  pos_weight=None):
         super().__init__(
