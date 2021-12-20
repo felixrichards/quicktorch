@@ -47,7 +47,7 @@ class LabScribeWriter(MetricWriter):
     def upload_split(self, results):
         # Past experiment arguments with space, find split's col with space for best split
         # split_col = self.n_args + 5 + len(results) * self.split
-        split_col = 3 + (len(results) + 1) * self.split
+        split_col = 5 + (len(results) + 1) * self.split
 
         asyncio.run(
             labscribe.gsheets_async.upload_results(
