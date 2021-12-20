@@ -190,6 +190,7 @@ def train(net, input, criterion='default',
                 }
                 checkpoint.update({
                     'metrics': metrics.get_metrics(),
+                    'best_metrics': metrics.get_best_metrics(),
                 })
                 if metrics.is_best():
                     checkpoint.update({
@@ -267,7 +268,7 @@ def evaluate(net, input, device='cpu', metrics=None, surpress=False, figs_dir=No
 
 def save_prediction_mask(pred, figs_dir, lbl):
     pred = pred.detach()
-    pred = torch.sigmoid(pred)
+    pred = torch.sigmoid(pred).round()
     pred = (pred.cpu().numpy() * 255).astype('uint8')
     pred = PIL.Image.fromarray(pred[0, 0])
     pred.save(os.path.join(figs_dir, lbl + '.png'))
