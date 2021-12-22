@@ -34,7 +34,7 @@ class DAFMetric(MultiClassSegmentationTracker):
                 target[:, i].contiguous()
             ) for i in range(self.n_classes)
         ])
-        if not self.full_metrics:
+        if not self.full_metrics or self.n_classes == 1:
             iou_ = iou_.mean()
 
         self.metrics['IoU'] = self.batch_average(iou_, 'IoU')
