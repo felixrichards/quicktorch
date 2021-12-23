@@ -38,7 +38,11 @@ class DAFMetric(MultiClassSegmentationTracker):
             iou_ = iou_.mean()
 
         self.metrics['IoU'] = self.batch_average(iou_, 'IoU')
-        self.metrics["Dice"] = self.batch_average(self.dice_fn(seg_pred, target), 'Dice')
+        self.metrics["Dice"] = self.batch_average(
+            self.dice_fn(
+                seg_pred.cpu().contiguous().round().numpy(),
+                target.cpu().contiguous().numpy()
+            ), 'Dice')
 
         if plot:
             fig, ax = plt.subplots(2, self.n_classes)
