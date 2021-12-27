@@ -36,6 +36,7 @@ class _DecoderBlock(nn.Module):
     def __init__(self, in_channels, out_channels):
         super(_DecoderBlock, self).__init__()
         self.decode = nn.Sequential(
+            nn.Upsample(scale_factor=2, mode='bilinear'),
             nn.Conv2d(in_channels, out_channels, kernel_size=3, padding=1),
             nn.BatchNorm2d(out_channels),
             nn.ReLU(inplace=True),
@@ -45,7 +46,6 @@ class _DecoderBlock(nn.Module):
             nn.Conv2d(out_channels, out_channels, kernel_size=3, padding=1),
             nn.BatchNorm2d(out_channels),
             nn.ReLU(inplace=True),
-            nn.ConvTranspose2d(out_channels, out_channels, kernel_size=2, stride=2),
         )
 
     def forward(self, x):
