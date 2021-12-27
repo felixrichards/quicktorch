@@ -1,5 +1,6 @@
 import sys
 from collections import OrderedDict
+from functools import reduce
 
 import torch
 import torch.nn.functional as F
@@ -16,6 +17,8 @@ from quicktorch.modules.attention.attention import (
     GuidedAttention
 )
 from quicktorch.modules.attention.utils import ResNet50Features, StandardFeatures
+
+import matplotlib.pyplot as plt
 
 
 def get_backbone(key):
@@ -69,11 +72,11 @@ class AttModel(Model):
         output_size = x.size()
         segs, refined_segs, aux_outs = self.backbone(x)
 
-        segs = [predict(seg) for predict, seg in zip(self.predicts, segs)]
-        refined_segs = [refine(seg) for refine, seg in zip(self.refines, refined_segs)]
-
         segs = [F.interpolate(seg, size=output_size[2:], mode='bilinear') for seg in segs]
         refined_segs = [F.interpolate(seg, size=output_size[2:], mode='bilinear') for seg in refined_segs]
+
+        segs = [predict(seg) for predict, seg in zip(self.predicts, segs)]
+        refined_segs = [refine(seg) for refine, seg in zip(self.refines, refined_segs)]
 
         segs = [self.strip(seg) for seg in segs]
         refined_segs = [self.strip(seg) for seg in refined_segs]
@@ -85,6 +88,13 @@ class AttModel(Model):
             )
         else:
             return sum(refined_segs) / len(refined_segs)
+
+
+def plot_features(features):
+    fig, ax = plt.subplots(len(features), 8, figsize=(10, 15))
+    for axrow, d in zip(ax, features):
+        for axi, down_och in zip(axrow, d):
+            axi.imshow(down_och[0].detach().cpu().numpy())
 
 
 class AttentionMS(Model):
@@ -108,8 +118,8 @@ class AttentionMS(Model):
             nn.ReLU(inplace=True)
         ) for _ in range(len(scales))])
 
-        self.up2 = _DecoderBlock(base_channels, base_channels)
-        self.up1 = _DecoderBlock(base_channels, base_channels)
+        self.ups2 = nn.ModuleList([_DecoderBlock(base_channels, base_channels) for _ in scales])
+        self.ups1 = nn.ModuleList([_DecoderBlock(base_channels, base_channels) for _ in scales])
 
         self.sem_mod1 = SemanticModule(base_channels * 2)
         self.sem_mod2 = SemanticModule(base_channels * 2)
@@ -153,11 +163,11 @@ class AttentionMS(Model):
             att_head(down, fused) for att_head, down in zip(self.attention_heads, downs)
         ])
 
+        # print(', '.join([f'{down.size()=}' for down in downs]))
         # print(', '.join([f'{refined_seg.size()=}' for refined_seg in refined_segs]))
-        segs = [self.up1(down) for down in downs]
+        segs = [reduce(lambda r, f: f(r), self.ups1[:sc+1], down) for sc, down in zip(self.scales, downs)]
+        refined_segs = [reduce(lambda r, f: f(r), self.ups2[:sc+1], seg) for sc, seg in zip(self.scales, refined_segs)]
         # print(', '.join([f'{seg.size()=}' for seg in segs]))
-
-        refined_segs = [self.up2(seg) for seg in refined_segs]
         # print(', '.join([f'{refined_seg.size()=}' for refined_seg in refined_segs]))
 
         if self.rcnn:
