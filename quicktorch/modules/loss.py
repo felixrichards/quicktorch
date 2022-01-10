@@ -13,7 +13,7 @@ class ConsensusLoss(nn.Module):
 
     def forward(self, output, target):
         weight = self.loss_weight(target)
-        target = torch.where(target >= self.eta, 1, 0)
+        target = torch.where(target >= self.eta, 1., 0.)
         return (self.seg_criterion(output, target) * weight).mean()
 
     def loss_weight(self, target):
