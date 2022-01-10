@@ -266,12 +266,17 @@ def evaluate(net, input, device='cpu', metrics=None, surpress=False, figs_dir=No
     return metrics.get_metrics()
 
 
-def save_prediction_mask(pred, figs_dir, lbl):
-    pred = pred.detach()
-    pred = torch.sigmoid(pred).round()
-    pred = (pred.cpu().numpy() * 255).astype('uint8')
+def save_prediction_mask(out, figs_dir, lbl):
+    out = out.detach()
+    out = torch.sigmoid(out)
+    pred = (out.round().cpu().numpy() * 255).astype('uint8')
     pred = PIL.Image.fromarray(pred[0, 0])
     pred.save(os.path.join(figs_dir, lbl + '.png'))
+
+    probs = (out.cpu().numpy() * 255).astype('uint8')
+    probs = PIL.Image.fromarray(probs[0, 0])
+    os.makedirs(os.path.join(figs_dir, 'probs'), exist_ok=True)
+    probs.save(os.path.join(figs_dir, 'probs', lbl + '.png'))
 
 
 def train_gan(netG, netD, input, criterion='default',
