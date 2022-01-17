@@ -118,8 +118,8 @@ class AttentionMS(Model):
             nn.ReLU(inplace=True)
         ) for _ in range(len(scales))])
 
-        self.ups2 = nn.ModuleList([_DecoderBlock(base_channels, base_channels) for _ in scales])
-        self.ups1 = nn.ModuleList([_DecoderBlock(base_channels, base_channels) for _ in scales])
+        self.ups2 = nn.ModuleList([_DecoderBlock(base_channels * (2 - sc + 1), base_channels * (2 - sc + 1)) for sc in scales])
+        self.ups1 = nn.ModuleList([_DecoderBlock(base_channels * (2 - sc + 1), base_channels * (2 - sc + 1)) for sc in scales])
 
         self.sem_mod1 = SemanticModule(base_channels * 2)
         self.sem_mod2 = SemanticModule(base_channels * 2)
@@ -132,6 +132,13 @@ class AttentionMS(Model):
 
         self.fuse = MultiConv(len(scales) * base_channels, base_channels, False)
 
+    def upscale(self, ups, segs):
+        bc = segs[0].shape[1]
+        out = ups[2](segs[2])
+        out = ups[1](torch.cat((segs[1], out), dim=1))
+        out = ups[0](torch.cat((segs[0], out), dim=1))
+        return [out[:, sc * bc: (sc + 1) * bc] for sc in self.scales]
+
     def forward(self, x):
         if self.preprocess is not None:
             x = self.preprocess(x)
@@ -142,7 +149,7 @@ class AttentionMS(Model):
             recompute_scale_factor=True,
             mode='bilinear'
         ) if s != 0 else x for s in self.scales]
-        # print(', '.join([f'{down.size()=}' for down in downs]))
+        print(', '.join([f'{down.size()=}' for down in downs]))
 
         # Generate features
         downs = [self.features(down) for down in downs]
@@ -163,12 +170,14 @@ class AttentionMS(Model):
             att_head(down, fused) for att_head, down in zip(self.attention_heads, downs)
         ])
 
-        # print(', '.join([f'{down.size()=}' for down in downs]))
-        # print(', '.join([f'{refined_seg.size()=}' for refined_seg in refined_segs]))
-        segs = [reduce(lambda r, f: f(r), self.ups1[:sc+1], down) for sc, down in zip(self.scales, downs)]
-        refined_segs = [reduce(lambda r, f: f(r), self.ups2[:sc+1], seg) for sc, seg in zip(self.scales, refined_segs)]
-        # print(', '.join([f'{seg.size()=}' for seg in segs]))
-        # print(', '.join([f'{refined_seg.size()=}' for refined_seg in refined_segs]))
+        print(', '.join([f'{down.size()=}' for down in downs]))
+        print(', '.join([f'{refined_seg.size()=}' for refined_seg in refined_segs]))
+        # segs = [reduce(lambda r, f: f(r), self.ups1[:sc+1], down) for sc, down in zip(self.scales, downs)]
+        # refined_segs = [reduce(lambda r, f: f(r), self.ups2[:sc+1], seg) for sc, seg in zip(self.scales, refined_segs)]
+        segs = self.upscale(self.ups1, downs)
+        refined_segs = self.upscale(self.ups2, refined_segs)
+        print(', '.join([f'{seg.size()=}' for seg in segs]))
+        print(', '.join([f'{refined_seg.size()=}' for refined_seg in refined_segs]))
 
         if self.rcnn:
             out = OrderedDict({
