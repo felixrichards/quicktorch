@@ -16,9 +16,6 @@ class _EncoderBlock(nn.Module):
             nn.Conv2d(out_channels, out_channels, kernel_size=3, padding=1),
             nn.BatchNorm2d(out_channels),
             nn.ReLU(inplace=True),
-            nn.Conv2d(out_channels, out_channels, kernel_size=3, padding=1),
-            nn.BatchNorm2d(out_channels),
-            nn.ReLU(inplace=True),
         ]
         if dropout:
             layers.append(nn.Dropout())
@@ -38,9 +35,6 @@ class _DecoderBlock(nn.Module):
         self.decode = nn.Sequential(
             nn.Upsample(scale_factor=2, mode='bilinear'),
             nn.Conv2d(in_channels, out_channels, kernel_size=3, padding=1),
-            nn.BatchNorm2d(out_channels),
-            nn.ReLU(inplace=True),
-            nn.Conv2d(out_channels, out_channels, kernel_size=3, padding=1),
             nn.BatchNorm2d(out_channels),
             nn.ReLU(inplace=True),
             nn.Conv2d(out_channels, out_channels, kernel_size=3, padding=1),
@@ -79,7 +73,7 @@ class SemanticModule(nn.Module):
 class PAM_Module(nn.Module):
     """ Position attention module"""
     def __init__(self, in_channels):
-        super(PAM_Module, self).__init__()
+        super().__init__()
 
         self.query_conv = nn.Conv2d(in_channels=in_channels, out_channels=in_channels // 8, kernel_size=1)
         self.key_conv = nn.Conv2d(in_channels=in_channels, out_channels=in_channels // 8, kernel_size=1)
@@ -116,7 +110,7 @@ class PAM_Module(nn.Module):
 class CAM_Module(nn.Module):
     """ Channel attention module"""
     def __init__(self, in_channels):
-        super(CAM_Module, self).__init__()
+        super().__init__()
         self.gamma = nn.Parameter(torch.zeros(1))
         self.align = nn.Softmax(dim=-1)
 
