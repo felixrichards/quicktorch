@@ -42,6 +42,10 @@ class DAFLoss(nn.Module):
             self.seg_criterion(seg, target)
             for seg in segmentations
         ]
+
+        if all(o is None for o in aux_outputs):
+            return sum(seg_losses)
+
         aux_loss = self.aux_loss(aux_outputs)
         return sum(seg_losses) + aux_loss
 
