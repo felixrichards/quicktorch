@@ -37,17 +37,17 @@ def create_attention_backbone(
     **kwargs,
 ):
     backbone_cls = get_backbone(kwargs['backbone'])
-    kwargs['attention_head'] = get_attention_head(kwargs['attention_head'])
+    if type(kwargs['attention_head']) is str:
+        kwargs['attention_head'] = get_attention_head(kwargs['attention_head'])
     kwargs['attention_mod'] = get_attention_mod(kwargs['attention_mod'])
     return backbone_cls(**kwargs)
 
 
 class AttModel(Model):
     def __init__(self, n_channels=1, base_channels=64, n_classes=1, pad_to_remove=64, scale=None, backbone='MS',
-                 attention_head='Dual', attention_mod='Guided', scales=3,
+                 attention_head='Dual', attention_mod='Guided', scales=3, ms_image=True,
                  **kwargs):
         super().__init__(**kwargs)
-        print(base_channels)
 
         if type(scales) is int:
             scales = list(range(scales))
@@ -60,7 +60,8 @@ class AttModel(Model):
             scale=scale,
             scales=scales,
             attention_mod=attention_mod,
-            attention_head=attention_head
+            attention_head=attention_head,
+            ms_image=ms_image,
         )
         self.strip = RemovePadding(pad_to_remove)
         self.scales = scales
@@ -100,7 +101,7 @@ def plot_features(features):
 class AttentionMS(Model):
     def __init__(self, n_channels=1, base_channels=64, scale=None,
                  scales=[0, 1, 2], attention_mod=GuidedAttention,
-                 attention_head=None, rcnn=False,
+                 attention_head=None, rcnn=False, ms_image=True,
                  **kwargs):
         super().__init__(**kwargs)
         self.preprocess = scale
@@ -109,14 +110,19 @@ class AttentionMS(Model):
 
         self.reassemble = Reassemble()
 
-        self.features = StandardFeatures(n_channels, base_channels)
+        self.features = StandardFeatures(n_channels, base_channels, ms_image=ms_image, scales=scales)
         print(sum(p.numel() for p in self.features.parameters() if p.requires_grad))
 
+        print(base_channels)
+        if ms_image:
+            st_incs = [base_channels * 4] * len(scales)
+        else:
+            st_incs = [base_channels * 2, base_channels * 3, base_channels * 4]
         self.standardises = nn.ModuleList([nn.Sequential(
-            nn.Conv2d(base_channels * 4, base_channels, kernel_size=1),
+            nn.Conv2d(st_inc, base_channels, kernel_size=1),
             nn.BatchNorm2d(base_channels),
             nn.ReLU(inplace=True)
-        ) for _ in range(len(scales))])
+        ) for st_inc in st_incs])
 
         self.ups2 = nn.ModuleList([_DecoderBlock(base_channels * (2 - sc + 1), base_channels * (2 - sc + 1)) for sc in scales])
         self.ups1 = nn.ModuleList([_DecoderBlock(base_channels * (2 - sc + 1), base_channels * (2 - sc + 1)) for sc in scales])
@@ -126,7 +132,13 @@ class AttentionMS(Model):
 
         #  Stacked Attention: Tie SemanticModules across weights
         self.attention_heads = nn.ModuleList([
-            attention_mod(base_channels, s, self.sem_mod1, self.sem_mod2, attention_head)
+            attention_mod(
+                base_channels,
+                disassembles=s,
+                semantic_module1=self.sem_mod1,
+                semantic_module2=self.sem_mod2,
+                attention_head=attention_head
+            )
             for s in scales[::-1]
         ])
 
@@ -142,17 +154,8 @@ class AttentionMS(Model):
     def forward(self, x):
         if self.preprocess is not None:
             x = self.preprocess(x)
-        # Create downscaled copies
-        downs = [F.interpolate(
-            x,
-            scale_factor=1/2**s,
-            recompute_scale_factor=True,
-            mode='bilinear'
-        ) if s != 0 else x for s in self.scales]
-        print(', '.join([f'{down.size()=}' for down in downs]))
-
-        # Generate features
-        downs = [self.features(down) for down in downs]
+        # Create multiscale features
+        downs = self.features(x)
         # print(', '.join([f'{down.size()=}' for down in downs]))
 
         downs = [standardise(down) for standardise, down in zip(self.standardises, downs)]
@@ -170,14 +173,14 @@ class AttentionMS(Model):
             att_head(down, fused) for att_head, down in zip(self.attention_heads, downs)
         ])
 
-        print(', '.join([f'{down.size()=}' for down in downs]))
-        print(', '.join([f'{refined_seg.size()=}' for refined_seg in refined_segs]))
+        # print(', '.join([f'{down.size()=}' for down in downs]))
+        # print(', '.join([f'{refined_seg.size()=}' for refined_seg in refined_segs]))
         # segs = [reduce(lambda r, f: f(r), self.ups1[:sc+1], down) for sc, down in zip(self.scales, downs)]
         # refined_segs = [reduce(lambda r, f: f(r), self.ups2[:sc+1], seg) for sc, seg in zip(self.scales, refined_segs)]
         segs = self.upscale(self.ups1, downs)
         refined_segs = self.upscale(self.ups2, refined_segs)
-        print(', '.join([f'{seg.size()=}' for seg in segs]))
-        print(', '.join([f'{refined_seg.size()=}' for refined_seg in refined_segs]))
+        # print(', '.join([f'{seg.size()=}' for seg in segs]))
+        # print(', '.join([f'{refined_seg.size()=}' for refined_seg in refined_segs]))
 
         if self.rcnn:
             out = OrderedDict({
@@ -189,7 +192,7 @@ class AttentionMS(Model):
 
 
 class AttentionResNet(Model):
-    def __init__(self, n_channels=1, base_channels=64, scale=None, rcnn=False,
+    def __init__(self, n_channels=1, base_channels=64, scale=None, rcnn=False, ms_image=True, scales=[0, 1, 2],
                  **kwargs):
         super().__init__(**kwargs)
         self.preprocess = scale
@@ -198,7 +201,7 @@ class AttentionResNet(Model):
 
         self.reassemble = Reassemble()
 
-        self.features = ResNet50Features(n_channels)
+        self.features = ResNet50Features(n_channels, ms_image=ms_image, scales=scales)
         self.pool = nn.MaxPool2d(2, 2)
         self.conv1_3 = nn.Sequential(
             nn.Conv2d(512, base_channels, kernel_size=1),
