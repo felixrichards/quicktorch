@@ -1,4 +1,5 @@
 import sys
+
 from collections import OrderedDict
 from functools import reduce
 
@@ -16,12 +17,12 @@ from quicktorch.modules.attention.attention import (
     MultiConv,
     GuidedAttention
 )
-from quicktorch.modules.attention.utils import ResNet50Features, StandardFeatures
+from quicktorch.modules.attention.utils import ResNet50Features, get_ms_backbone
 
 import matplotlib.pyplot as plt
 
 
-def get_backbone(key):
+def get_attention_model(key):
     return getattr(sys.modules[__name__], f'Attention{key}')
 
 
@@ -29,18 +30,17 @@ def get_attention_head(key):
     return getattr(sys.modules[quicktorch.modules.attention.attention.__name__], f'{key}AttentionHead')
 
 
-def get_attention_mod(key):
+def get_attention_module(key):
     return getattr(sys.modules[quicktorch.modules.attention.attention.__name__], f'{key}Attention')
 
 
 def create_attention_backbone(
     **kwargs,
 ):
-    backbone_cls = get_backbone(kwargs['backbone'])
     if type(kwargs['attention_head']) is str:
         kwargs['attention_head'] = get_attention_head(kwargs['attention_head'])
-    kwargs['attention_mod'] = get_attention_mod(kwargs['attention_mod'])
-    return backbone_cls(**kwargs)
+    kwargs['attention_mod'] = get_attention_module(kwargs['attention_mod'])
+    return AttentionMS(**kwargs)
 
 
 class AttModel(Model):
@@ -53,34 +53,32 @@ class AttModel(Model):
             scales = list(range(scales))
 
         self.backbone_key = backbone
-        self.backbone = create_attention_backbone(
-            n_channels=n_channels,
+        self.features = get_ms_backbone(backbone)(n_channels, base_channels, ms_image=ms_image, scales=scales)
+
+        self.attention_net = create_attention_backbone(
+            in_channels=self.features.out_channels,
             base_channels=base_channels,
-            backbone=backbone,
-            scale=scale,
             scales=scales,
             attention_mod=attention_mod,
             attention_head=attention_head,
-            ms_image=ms_image,
         )
-        self.strip = RemovePadding(pad_to_remove)
         self.scales = scales
+        self.preprocess = scale
 
-        self.predicts = nn.ModuleList([nn.Conv2d(base_channels, n_classes, kernel_size=1) for _ in range(len(scales))])
-        self.refines = nn.ModuleList([nn.Conv2d(base_channels, n_classes, kernel_size=1) for _ in range(len(scales))])
+        self.mask_generator = MSAttMaskGenerator(base_channels, n_classes, scales, pad_to_remove=64)
 
     def forward(self, x):
-        output_size = x.size()
-        segs, refined_segs, aux_outs = self.backbone(x)
+        if self.preprocess is not None:
+            x = self.preprocess(x)
 
-        segs = [F.interpolate(seg, size=output_size[2:], mode='bilinear') for seg in segs]
-        refined_segs = [F.interpolate(seg, size=output_size[2:], mode='bilinear') for seg in refined_segs]
+        # Create multiscale features
+        x = self.features(x)
 
-        segs = [predict(seg) for predict, seg in zip(self.predicts, segs)]
-        refined_segs = [refine(seg) for refine, seg in zip(self.refines, refined_segs)]
+        # Generate rough segmentations with attention net
+        segs, refined_segs, aux_outs = self.attention_net(x)
 
-        segs = [self.strip(seg) for seg in segs]
-        refined_segs = [self.strip(seg) for seg in refined_segs]
+        # Upsize and refine
+        segs, refined_segs = self.mask_generator(x, segs, refined_segs)
 
         if self.training:
             return (
@@ -91,38 +89,46 @@ class AttModel(Model):
             return sum(refined_segs) / len(refined_segs)
 
 
-def plot_features(features):
-    fig, ax = plt.subplots(len(features), 8, figsize=(10, 15))
-    for axrow, d in zip(ax, features):
-        for axi, down_och in zip(axrow, d):
-            axi.imshow(down_och[0].detach().cpu().numpy())
+class MSAttMaskGenerator(nn.Module):
+    def __init__(self, base_channels, n_classes, scales=[0, 1, 2], pad_to_remove=64):
+        super().__init__()
+        self.predicts = nn.ModuleList([nn.Conv2d(base_channels, n_classes, kernel_size=1) for _ in range(len(scales))])
+        self.refines = nn.ModuleList([nn.Conv2d(base_channels, n_classes, kernel_size=1) for _ in range(len(scales))])
+        self.scales = scales
+        self.strip = RemovePadding(pad_to_remove)
+
+    def forward(self, images, segs, refined_segs):
+        output_size = images.size()
+
+        segs = [F.interpolate(seg, size=output_size[2:], mode='bilinear') for seg in segs]
+        refined_segs = [F.interpolate(seg, size=output_size[2:], mode='bilinear') for seg in refined_segs]
+
+        segs = [predict(seg) for predict, seg in zip(self.predicts, segs)]
+        refined_segs = [refine(seg) for refine, seg in zip(self.refines, refined_segs)]
+
+        segs = [self.strip(seg) for seg in segs]
+        refined_segs = [self.strip(seg) for seg in refined_segs]
+
+        return segs, refined_segs
 
 
 class AttentionMS(Model):
-    def __init__(self, n_channels=1, base_channels=64, scale=None,
+    def __init__(self, in_channels=[256, 256, 256], base_channels=64,
                  scales=[0, 1, 2], attention_mod=GuidedAttention,
                  attention_head=None, rcnn=False, ms_image=True,
                  **kwargs):
         super().__init__(**kwargs)
-        self.preprocess = scale
         self.rcnn = rcnn
         self.scales = scales
 
         self.reassemble = Reassemble()
 
-        self.features = StandardFeatures(n_channels, base_channels, ms_image=ms_image, scales=scales)
-        print(sum(p.numel() for p in self.features.parameters() if p.requires_grad))
-
         print(base_channels)
-        if ms_image:
-            st_incs = [base_channels * 4] * len(scales)
-        else:
-            st_incs = [base_channels * 2, base_channels * 3, base_channels * 4]
         self.standardises = nn.ModuleList([nn.Sequential(
-            nn.Conv2d(st_inc, base_channels, kernel_size=1),
+            nn.Conv2d(inc, base_channels, kernel_size=1),
             nn.BatchNorm2d(base_channels),
             nn.ReLU(inplace=True)
-        ) for st_inc in st_incs])
+        ) for inc in in_channels])
 
         self.ups2 = nn.ModuleList([_DecoderBlock(base_channels * (2 - sc + 1), base_channels * (2 - sc + 1)) for sc in scales])
         self.ups1 = nn.ModuleList([_DecoderBlock(base_channels * (2 - sc + 1), base_channels * (2 - sc + 1)) for sc in scales])
@@ -151,12 +157,10 @@ class AttentionMS(Model):
         out = ups[0](torch.cat((segs[0], out), dim=1))
         return [out[:, sc * bc: (sc + 1) * bc] for sc in self.scales]
 
-    def forward(self, x):
-        if self.preprocess is not None:
-            x = self.preprocess(x)
-        # Create multiscale features
-        downs = self.features(x)
+    def forward(self, downs):
         # print(', '.join([f'{down.size()=}' for down in downs]))
+        if type(downs) is dict:
+            downs = list(downs.values())
 
         downs = [standardise(down) for standardise, down in zip(self.standardises, downs)]
         # print(', '.join([f'{down.size()=}' for down in downs]))
@@ -285,3 +289,10 @@ class AttentionResNet(Model):
             refine2,
             refine3,
         ), aux_outs
+
+
+def plot_features(features):
+    fig, ax = plt.subplots(len(features), 8, figsize=(10, 15))
+    for axrow, d in zip(ax, features):
+        for axi, down_och in zip(axrow, d):
+            axi.imshow(down_och[0].detach().cpu().numpy())

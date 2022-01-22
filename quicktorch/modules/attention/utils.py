@@ -1,8 +1,14 @@
-from numpy.lib.twodim_base import mask_indices
+import sys
+
 import torch
 import torch.nn as nn
-from torchvision.models import resnext50_32x4d, resnet50
 import torch.nn.functional as F
+
+from torchvision.models import resnext50_32x4d, resnet50
+
+
+def get_ms_backbone(key):
+    return getattr(sys.modules[__name__], f'{key}Features')
 
 
 class MSBackbone(nn.Module):
@@ -45,7 +51,7 @@ class MSBackbone(nn.Module):
 
 
 class ResNet50Features(MSBackbone):
-    def __init__(self, n_channels=4, ms_image=True, scales=[0, 1, 2]):
+    def __init__(self, n_channels=4, ms_image=True, scales=[0, 1, 2], **kwargs):
         super().__init__(ms_image=ms_image, scales=scales)
         self.n_channels = n_channels
         net = self.resnet50()
@@ -53,26 +59,28 @@ class ResNet50Features(MSBackbone):
         self.layer1 = net[5]
         self.layer2 = net[6]
         self.layer3 = net[7]
+        if self.ms_image:
+            self.out_channels = [512 * 4] * len(self.scales)
+        else:
+            self.out_channels = [512 * 1, 512 * 2, 512 * 4]
 
     def resnet50(self):
         model = resnet50(pretrained=True)
-
-        conv1 = model.conv1
-        first_layer = nn.Conv2d(self.n_channels, 64, kernel_size=7, stride=2, padding=3, bias=False)
-        with torch.no_grad():
-            first_layer.weight[:, :3] = conv1.weight
-        model.conv1 = first_layer
+        model = self.recorrect_in_channels(model)
         return list(model.children())[:8]
 
     def resnext50(self):
         model = resnext50_32x4d(pretrained=True)
+        model = self.recorrect_in_channels(model)
+        return list(model.children())[:8]
 
+    def recorrect_in_channels(self, model):
         conv1 = model.conv1
         first_layer = nn.Conv2d(self.n_channels, 64, kernel_size=7, stride=2, padding=3, bias=False)
         with torch.no_grad():
-            first_layer.weight[:, :3] = conv1.weight
+            first_layer.weight[:, :min(self.n_channels, 3)] = conv1.weight[:, :min(self.n_channels, 3)]
         model.conv1 = first_layer
-        return list(model.children())[:8]
+        return model
 
 
 class StandardFeatures(MSBackbone):
@@ -83,6 +91,10 @@ class StandardFeatures(MSBackbone):
         self.layer1 = standard_block(base_channels * 1, base_channels * 2)
         self.layer2 = standard_block(base_channels * 2, base_channels * 3)
         self.layer3 = standard_block(base_channels * 3, base_channels * 4)
+        if self.ms_image:
+            self.out_channels = [base_channels * 4] * len(self.scales)
+        else:
+            self.out_channels = [base_channels * 2, base_channels * 3, base_channels * 4]
 
 
 def standard_block(in_c, out_c):
