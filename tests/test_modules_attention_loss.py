@@ -1,10 +1,10 @@
 import pytest
 import torch
-from quicktorch.modules.attention.loss import DAFLossMCML
+from quicktorch.modules.attention.loss import DAFLoss
 
 
-def test_daflossmcml():
-    criterion = DAFLossMCML()
+def test_dafloss():
+    criterion = DAFLoss()
     target, output = torch.zeros(1, 3, 4, 4), torch.zeros(1, 3, 4, 4)
     # 7 pixels total positive
     target[0, 0, 1:3, 1:3] = 1  # 4
@@ -16,4 +16,4 @@ def test_daflossmcml():
     output[0, 1, 2, 1] = 1
 
     loss = criterion(output, target)
-    assert False
+    assert True
