@@ -65,20 +65,20 @@ class AttModel(Model):
         self.scales = scales
         self.preprocess = scale
 
-        self.mask_generator = MSAttMaskGenerator(base_channels, n_classes, scales, pad_to_remove=64)
+        self.mask_generator = MSAttMaskGenerator(base_channels, n_classes, scales, pad_to_remove=pad_to_remove)
 
-    def forward(self, x):
+    def forward(self, images):
         if self.preprocess is not None:
-            x = self.preprocess(x)
+            images = self.preprocess(images)
 
         # Create multiscale features
-        x = self.features(x)
+        x = self.features(images)
 
         # Generate rough segmentations with attention net
         segs, refined_segs, aux_outs = self.attention_net(x)
 
         # Upsize and refine
-        segs, refined_segs = self.mask_generator(x, segs, refined_segs)
+        segs, refined_segs = self.mask_generator(images, segs, refined_segs)
 
         if self.training:
             return (
