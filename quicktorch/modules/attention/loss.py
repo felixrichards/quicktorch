@@ -74,7 +74,7 @@ class FocalWithLogitsLoss(nn.Module):
     def __init__(self, pos_weight=2., gamma=2., reduction='none'):
         super().__init__()
         print(f"in focalloss {pos_weight=}")
-        self.alpha = 1 / pos_weight
+        self.alpha = 1 / (1 + 1 / pos_weight)
         self.gamma = gamma
         self.eps = 1e-6
         self.reduction = reduction
