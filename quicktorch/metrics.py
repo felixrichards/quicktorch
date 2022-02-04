@@ -311,11 +311,10 @@ class MultiClassSegmentationTracker(MetricTracker):
         self.best_metrics = self.metrics.copy()
         self.n_classes = n_classes
         self.iou_fn = torchmetrics.IoU(
-            n_classes if n_classes < 1 else 2,
+            n_classes,
             reduction='elementwise_mean'  # if not full_metrics else 'none'
-        )
+        ).to(device) if n_classes > 1 else iou
         self.dice_fn = dice
-        self.iou_fn.to(device)
         self.reset()
 
     def calculate(self, output, target):
@@ -412,14 +411,20 @@ def _clip(pred):
 
 
 def iou(pred, lbl, to_mask=None):
+    def make_compatible(a):
+        if type(a) is torch.Tensor:
+            a = a.cpu().numpy()
+        return a.round()
+    pred = make_compatible(pred)
+    lbl = make_compatible(lbl)
     pred = pred.flatten()
     lbl = lbl.flatten()
     if to_mask is not None:
         pred = to_mask(pred, lbl)
-    try:
-        score = jaccard_score(lbl, pred, zero_division=0)
-    except:
-        score = 0.
+    score = jaccard_score(lbl, pred, zero_division=1.)
+    # try:
+    # except:
+    #     score = 1.
     return score
 
 
@@ -429,7 +434,7 @@ def dice(pred, lbl, to_mask=None):
     if to_mask is not None:
         pred = to_mask(pred)
     try:
-        score = f1_score(lbl, pred, zero_division=0)
+        score = f1_score(lbl, pred, zero_division=1.)
     except:
-        score = 0.
+        score = 1.
     return score
