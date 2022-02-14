@@ -53,7 +53,12 @@ class AttModel(Model):
             scales = list(range(scales))
 
         self.backbone_key = backbone
-        self.features = get_ms_backbone(backbone)(n_channels, base_channels, ms_image=ms_image, scales=scales)
+        self.features = get_ms_backbone(backbone)(
+            n_channels=n_channels,
+            base_channels=base_channels,
+            ms_image=ms_image,
+            scales=scales
+        )
 
         self.attention_net = create_attention_backbone(
             in_channels=self.features.out_channels,
@@ -158,9 +163,9 @@ class AttentionMS(Model):
         return [out[:, sc * bc: (sc + 1) * bc] for sc in self.scales]
 
     def forward(self, downs):
-        # print(', '.join([f'{down.size()=}' for down in downs]))
         if type(downs) is dict:
             downs = list(downs.values())
+        # print(', '.join([f'{down.size()=}' for down in downs]))
 
         downs = [standardise(down) for standardise, down in zip(self.standardises, downs)]
         # print(', '.join([f'{down.size()=}' for down in downs]))
