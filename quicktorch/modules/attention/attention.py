@@ -260,10 +260,10 @@ class ChannelAttentionHead(nn.Module):
 class StandardAttention(nn.Module):
     """
     """
-    def __init__(self, channels, disassembles=0, semantic_module1=None, attention_head=None, **kwargs):
+    def __init__(self, channels, disassembles=0, scale_factor=2, semantic_module1=None, attention_head=None, **kwargs):
         super().__init__()
-        self.semantic_attention1 = SemanticAttentionBody(channels, disassembles, semantic_module1, attention_head)
-        self.reassemble = Assemble(-disassembles)
+        self.semantic_attention1 = SemanticAttentionBody(channels, disassembles, scale_factor, semantic_module1, attention_head)
+        self.reassemble = Assemble(-disassembles, scale_factor)
 
     def forward(self, x, fused):
         attention, _, _, _ = self.semantic_attention1(x, fused)
@@ -274,11 +274,11 @@ class StandardAttention(nn.Module):
 class GuidedAttention(nn.Module):
     """
     """
-    def __init__(self, channels, disassembles=0, semantic_module1=None, semantic_module2=None, attention_head=None):
+    def __init__(self, channels, disassembles=0, scale_factor=2, semantic_module1=None, semantic_module2=None, attention_head=None):
         super().__init__()
-        self.semantic_attention1 = SemanticAttentionBody(channels, disassembles, semantic_module1, attention_head)
-        self.semantic_attention2 = SemanticAttentionBody(channels, disassembles, semantic_module2, attention_head)
-        self.reassemble = Assemble(-disassembles)
+        self.semantic_attention1 = SemanticAttentionBody(channels, disassembles, scale_factor, semantic_module1, attention_head)
+        self.semantic_attention2 = SemanticAttentionBody(channels, disassembles, scale_factor, semantic_module2, attention_head)
+        self.reassemble = Assemble(-disassembles, scale_factor)
 
     def forward(self, x, fused):
         attention, semv1, semo1, comb1 = self.semantic_attention1(x, fused)
@@ -295,9 +295,9 @@ class GuidedAttention(nn.Module):
 class SemanticAttentionBody(nn.Module):
     """
     """
-    def __init__(self, channels, disassembles=0, semantic_module=None, attention_head=None):
+    def __init__(self, channels, disassembles=0, scale_factor=2, semantic_module=None, attention_head=None):
         super().__init__()
-        self.combine = CombineScales(disassembles)
+        self.combine = CombineScales(disassembles, scale_factor)
         if semantic_module is None:
             semantic_module = SemanticModule(channels * 2)
         self.get_semantic = semantic_module
@@ -315,9 +315,9 @@ class SemanticAttentionBody(nn.Module):
 class CombineScales(nn.Module):
     """
     """
-    def __init__(self, disassembles=0):
+    def __init__(self, disassembles=0, factor=2):
         super().__init__()
-        self.disassemble = Assemble(disassembles)
+        self.disassemble = Assemble(disassembles, factor)
 
     def forward(self, x, other, att=None):
         other = F.interpolate(other, size=x.size()[-2:], mode='bilinear')
@@ -331,59 +331,61 @@ class CombineScales(nn.Module):
 
 
 class Assemble(nn.Module):
-    def __init__(self, disassembles=0):
+    def __init__(self, disassembles=0, factor=2):
         super().__init__()
         self.d = abs(disassembles)
         if disassembles > 0:
-            self.assemble = Disassemble()
+            self.assemble = Disassemble(factor=factor)
         elif disassembles < 0:
-            self.assemble = Reassemble()
+            self.assemble = Reassemble(factor=factor)
 
     def forward(self, x):
-        for _ in range(self.d):
+        for d in range(self.d):
             x = self.assemble(x)
         return x
 
 
 class Disassemble(nn.Module):
-    def __init__(self):
+    def __init__(self, factor=2):
         super().__init__()
+        self.f = factor
 
     def forward(self, x):
         x, xs = compress(x)
-        x = disassemble(x)
+        x = disassemble(x, self.f)
         x = recover(x, xs)
         return x
 
 
 class Reassemble(nn.Module):
-    def __init__(self):
+    def __init__(self, factor=2):
         super().__init__()
+        self.f = factor
 
     def forward(self, x):
         x, xs = compress(x)
         if xs is not None:
             xs = [xs[0] // 4, *xs[1:]]
-        x = reassemble(x)
+        x = reassemble(x, self.f)
         x = recover(x, xs)
         return x
 
 
-def disassemble(x):
+def disassemble(x, f=2):
     _, c, w, h = x.size()
-    x = x.unfold(2, w // 2, w // 2)
-    x = x.unfold(3, h // 2, h // 2)
+    x = x.unfold(2, w // f, w // f)
+    x = x.unfold(3, h // f, h // f)
     x = x.permute(0, 2, 3, 1, 4, 5)
-    x = x.reshape(-1, c, w // 2, h // 2)
+    x = x.reshape(-1, c, w // f, h // f)
     return x
 
 
-def reassemble(x):
+def reassemble(x, f=2):
     b, c, w, h = x.size()
-    x = x.view(b // 4, 4, c, w, h)
+    x = x.view(b // f ** 2, f ** 2, c, w, h)
     x = x.permute(0, 2, 3, 4, 1)
-    x = x.reshape(b // 4, c * w * h, 4)
-    x = F.fold(x, (w * 2, h * 2), (w, h), (1, 1), stride=(w, h))
+    x = x.reshape(b // f ** 2, c * w * h, f ** 2)
+    x = F.fold(x, (w * f, h * f), (w, h), (1, 1), stride=(w, h))
     return x
 
 
