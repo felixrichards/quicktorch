@@ -45,7 +45,7 @@ def create_attention_backbone(
 
 class AttModel(Model):
     def __init__(self, n_channels=1, base_channels=64, n_classes=1, pad_to_remove=64, scale=None, backbone='MS',
-                 attention_head='Dual', attention_mod='Guided', scales=3, ms_image=True,
+                 attention_head='Dual', attention_mod='Guided', scales=3, scale_factor=2, ms_image=True, gridded=True,
                  **kwargs):
         super().__init__(**kwargs)
 
@@ -64,8 +64,10 @@ class AttModel(Model):
             in_channels=self.features.out_channels,
             base_channels=base_channels,
             scales=scales,
+            scale_factor=scale_factor,
             attention_mod=attention_mod,
             attention_head=attention_head,
+            gridded=gridded,
         )
         self.scales = scales
         self.preprocess = scale
@@ -119,14 +121,12 @@ class MSAttMaskGenerator(nn.Module):
 
 class AttentionMS(Model):
     def __init__(self, in_channels=[256, 256, 256], base_channels=64,
-                 scales=[0, 1, 2], attention_mod=GuidedAttention,
-                 attention_head=None, rcnn=False, ms_image=True,
+                 scales=[0, 1, 2], scale_factor=2, attention_mod=GuidedAttention,
+                 attention_head=None, rcnn=False, gridded=True,
                  **kwargs):
         super().__init__(**kwargs)
         self.rcnn = rcnn
         self.scales = scales
-
-        self.reassemble = Reassemble()
 
         print(base_channels)
         self.standardises = nn.ModuleList([nn.Sequential(
@@ -135,58 +135,61 @@ class AttentionMS(Model):
             nn.ReLU(inplace=True)
         ) for inc in in_channels])
 
-        self.ups2 = nn.ModuleList([_DecoderBlock(base_channels * (2 - sc + 1), base_channels * (2 - sc + 1)) for sc in scales])
-        self.ups1 = nn.ModuleList([_DecoderBlock(base_channels * (2 - sc + 1), base_channels * (2 - sc + 1)) for sc in scales])
+        self.ups2 = nn.ModuleList([_DecoderBlock(base_channels * (max(scales) - sc + 1), base_channels * (max(scales) - sc + 1)) for sc in scales])
+        self.ups1 = nn.ModuleList([_DecoderBlock(base_channels * (max(scales) - sc + 1), base_channels * (max(scales) - sc + 1)) for sc in scales])
 
         self.sem_mod1 = SemanticModule(base_channels * 2)
         self.sem_mod2 = SemanticModule(base_channels * 2)
+
+        # Controls size of dividing grids in gridded attention
+        disassembles = scales if gridded else [0] * len(scales)
 
         #  Stacked Attention: Tie SemanticModules across weights
         self.attention_heads = nn.ModuleList([
             attention_mod(
                 base_channels,
-                disassembles=s,
+                disassembles=d,
+                scale_factor=scale_factor,
                 semantic_module1=self.sem_mod1,
                 semantic_module2=self.sem_mod2,
                 attention_head=attention_head
             )
-            for s in scales[::-1]
+            for d in disassembles[::-1]
         ])
 
         self.fuse = MultiConv(len(scales) * base_channels, base_channels, False)
 
     def upscale(self, ups, segs):
-        bc = segs[0].shape[1]
-        out = ups[2](segs[2])
-        out = ups[1](torch.cat((segs[1], out), dim=1))
-        out = ups[0](torch.cat((segs[0], out), dim=1))
+        bc = segs[0].shape[1]  # original feature channels
+        out = ups[-1](segs[-1])
+        for i in self.scales[-2::-1]:
+            out = ups[i](torch.cat((segs[i], out), dim=1))
+
         return [out[:, sc * bc: (sc + 1) * bc] for sc in self.scales]
 
-    def forward(self, downs):
-        if type(downs) is dict:
-            downs = list(downs.values())
-        # print(', '.join([f'{down.size()=}' for down in downs]))
+    def forward(self, features):
+        if type(features) is dict:
+            features = list(features.values())
+        # print(', '.join([f'{feature.size()=}' for feature in features]))
 
-        downs = [standardise(down) for standardise, down in zip(self.standardises, downs)]
-        # print(', '.join([f'{down.size()=}' for down in downs]))
+        features = [standardise(feature) for standardise, feature in zip(self.standardises, features)]
+        # print(', '.join([f'{feature.size()=}' for feature in features]))
 
         # Align scales
         fused = self.fuse(torch.cat([
-            downs[0],
+            features[0],
             *[
-                F.interpolate(down, downs[0].size()[-2:], mode='bilinear') for down in downs[1:]
+                F.interpolate(feature, features[0].size()[-2:], mode='bilinear') for feature in features[1:]
             ]
         ], 1))
         # print(f'{fused.size()=}')
         refined_segs, aux_outs = zip(*[
-            att_head(down, fused) for att_head, down in zip(self.attention_heads, downs)
+            att_head(feature, fused) for att_head, feature in zip(self.attention_heads, features)
         ])
 
-        # print(', '.join([f'{down.size()=}' for down in downs]))
+        # print(', '.join([f'{feature.size()=}' for feature in features]))
         # print(', '.join([f'{refined_seg.size()=}' for refined_seg in refined_segs]))
-        # segs = [reduce(lambda r, f: f(r), self.ups1[:sc+1], down) for sc, down in zip(self.scales, downs)]
-        # refined_segs = [reduce(lambda r, f: f(r), self.ups2[:sc+1], seg) for sc, seg in zip(self.scales, refined_segs)]
-        segs = self.upscale(self.ups1, downs)
+        segs = self.upscale(self.ups1, features)
         refined_segs = self.upscale(self.ups2, refined_segs)
         # print(', '.join([f'{seg.size()=}' for seg in segs]))
         # print(', '.join([f'{refined_seg.size()=}' for refined_seg in refined_segs]))
@@ -198,102 +201,6 @@ class AttentionMS(Model):
             out.update({'aux_outs': aux_outs})
             return out
         return segs, refined_segs, aux_outs
-
-
-class AttentionResNet(Model):
-    def __init__(self, n_channels=1, base_channels=64, scale=None, rcnn=False, ms_image=True, scales=[0, 1, 2],
-                 **kwargs):
-        super().__init__(**kwargs)
-        self.preprocess = scale
-        self.rcnn = rcnn
-        self.scales = [0, 1, 2]
-
-        self.reassemble = Reassemble()
-
-        self.features = ResNet50Features(n_channels, ms_image=ms_image, scales=scales)
-        self.pool = nn.MaxPool2d(2, 2)
-        self.conv1_3 = nn.Sequential(
-            nn.Conv2d(512, base_channels, kernel_size=1),
-            nn.BatchNorm2d(base_channels),
-            nn.ReLU(inplace=True)
-        )
-        self.conv1_2 = nn.Sequential(
-            nn.Conv2d(1024, base_channels, kernel_size=1),
-            nn.BatchNorm2d(base_channels),
-            nn.ReLU(inplace=True)
-        )
-        self.conv1_1 = nn.Sequential(
-            nn.Conv2d(2048, base_channels, kernel_size=1),
-            nn.BatchNorm2d(base_channels),
-            nn.ReLU(inplace=True)
-        )
-
-        self.up2 = _DecoderBlock(base_channels, base_channels)
-        self.up1 = _DecoderBlock(base_channels, base_channels)
-
-        self.sem_mod1 = SemanticModule(base_channels * 2)
-        self.sem_mod2 = SemanticModule(base_channels * 2)
-
-        #  Stacked Attention: Tie SemanticModules across weights
-        self.guided_attention1 = GuidedAttention(base_channels, 0, self.sem_mod1, self.sem_mod2)
-        self.guided_attention2 = GuidedAttention(base_channels, 1, self.sem_mod1, self.sem_mod2)
-        self.guided_attention3 = GuidedAttention(base_channels, 2, self.sem_mod1, self.sem_mod2)
-
-        self.fuse = MultiConv(3 * base_channels, base_channels, False)
-
-    def forward(self, x):
-        if self.preprocess is not None:
-            x = self.preprocess(x)
-
-        # Generate features
-        down1, down2, down3 = self.features(x)
-        down1, down2, down3 = self.pool(down1), self.pool(down2), self.pool(down3)
-
-        down1 = self.conv1_1(down1)
-        down2 = self.conv1_2(down2)
-        down3 = self.conv1_3(down3)
-        # print(f'{down1.size()=}, {down2.size()=}, {down3.size()=}')
-
-        # Align scales
-        fused = self.fuse(torch.cat((
-            down3,
-            F.interpolate(down2, down3.size()[-2:], mode='bilinear'),
-            F.interpolate(down1, down3.size()[-2:], mode='bilinear')
-        ), 1))
-        # print(f'{fused.size()=}')
-
-        refine3, aux_outs3 = self.guided_attention3(down3, fused)
-        refine2, aux_outs2 = self.guided_attention2(down2, fused)
-        refine1, aux_outs1 = self.guided_attention1(down1, fused)
-
-        # print(f'{down1.size()=}, {down2.size()=}, {down3.size()=}')
-        predict3 = self.up1(down3)
-        predict2 = self.up1(down2)
-        predict1 = self.up1(down1)
-        # print(f'{predict1.size()=}, {predict2.size()=}, {predict3.size()=}')
-
-        refine3 = self.up2(refine3)
-        refine2 = self.up2(refine2)
-        refine1 = self.up2(refine1)
-        # print(f'{refine1.size()=}, {refine2.size()=}, {refine3.size()=}')
-
-        aux_outs = (aux_outs1, aux_outs2, aux_outs3)
-        if self.rcnn:
-            return OrderedDict({
-                '0': torch.cat((predict1, refine1), dim=1),
-                '1': torch.cat((predict2, refine2), dim=1),
-                '2': torch.cat((predict3, refine3), dim=1),
-                'aux_outs': aux_outs,
-            })
-        return (
-            predict1,
-            predict2,
-            predict3,
-        ), (
-            refine1,
-            refine2,
-            refine3,
-        ), aux_outs
 
 
 def plot_features(features):
