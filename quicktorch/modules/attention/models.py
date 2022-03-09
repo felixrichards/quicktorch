@@ -44,7 +44,7 @@ def create_attention_backbone(
 
 
 class AttModel(Model):
-    def __init__(self, n_channels=1, base_channels=64, n_classes=1, pad_to_remove=64, scale=None, backbone='MS',
+    def __init__(self, n_channels=1, base_channels=64, n_classes=1, pad_to_remove=64, scale=None, backbone='Standard',
                  attention_head='Dual', attention_mod='Guided', scales=3, scale_factor=2, ms_image=True, gridded=True,
                  **kwargs):
         super().__init__(**kwargs)
