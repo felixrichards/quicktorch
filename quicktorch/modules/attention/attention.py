@@ -60,12 +60,13 @@ class SemanticModule(nn.Module):
         self.dec1 = _DecoderBlock(in_channels * 2, in_channels)
 
     def forward(self, x):
-
         enc1 = self.enc1(x)
         enc2 = self.enc2(enc1)
 
         dec2 = self.dec2(enc2)
         dec1 = self.dec1(F.interpolate(dec2, enc1.size()[2:], mode='bilinear'))
+
+        dec1 = F.interpolate(dec1, x.size()[2:], mode='bilinear')
 
         return enc2.view(-1), dec1
 

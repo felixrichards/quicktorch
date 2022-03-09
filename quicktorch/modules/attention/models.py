@@ -163,6 +163,7 @@ class AttentionMS(Model):
         bc = segs[0].shape[1]  # original feature channels
         out = ups[-1](segs[-1])
         for i in self.scales[-2::-1]:
+            out = F.interpolate(out, segs[i].shape[2:])
             out = ups[i](torch.cat((segs[i], out), dim=1))
 
         return [out[:, sc * bc: (sc + 1) * bc] for sc in self.scales]
