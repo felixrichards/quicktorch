@@ -128,7 +128,6 @@ class AttentionMS(Model):
         self.rcnn = rcnn
         self.scales = scales
 
-        print(base_channels)
         self.standardises = nn.ModuleList([nn.Sequential(
             nn.Conv2d(inc, base_channels, kernel_size=1),
             nn.BatchNorm2d(base_channels),
