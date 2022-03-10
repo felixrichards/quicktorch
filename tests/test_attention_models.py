@@ -16,6 +16,19 @@ def test_attention_ms():
     assert len(out) == 3, "attentionms ms_image=False broke"
 
 
+def test_attention_nongridded():
+    x = [
+        torch.rand(1, 256, 8 * 2 ** i, 8 * 2 ** i) for i in range(3, 0, -1)
+    ]
+    model = am.AttentionMS(gridded=False)
+    out = model(x)
+    assert len(out) == 3, "standard non gridded broke"
+
+    model = am.AttentionMS(ms_image=False, gridded=False)
+    out = model(x)
+    assert len(out) == 3, "ms_image=False non gridded broke"
+
+
 def test_att_mask_generator():
     images = torch.rand(1, 1, 64, 64)
     x1 = [
