@@ -405,7 +405,7 @@ class Swimseg(Dataset):
     stds = (0.2310, 0.1911, 0.1612)
 
     def __init__(self, img_dir, fold='train', transform=None, aug_mult=1,
-                 padding=0,):
+                 padding=0, preload=True):
         super().__init__()
         self.img_paths = [
             img for img in glob.glob(os.path.join(img_dir, fold, '*.png'))
@@ -418,11 +418,18 @@ class Swimseg(Dataset):
         self.aug_mult = aug_mult
         self.norm_transform = transforms.Normalize(self.means, self.stds)
         self.padding = padding
+        self.preload = preload
+        if preload:
+            self.preload_images()
 
     def __getitem__(self, i):
         i = i // self.aug_mult
-        img = np.array(Image.open(self.img_paths[i]))
-        mask = np.array(Image.open(self.mask_paths[i]))
+        if self.preload:
+            img = self.images[i]
+            mask = self.masks[i]
+        else:
+            img = np.array(Image.open(self.img_paths[i]))
+            mask = np.array(Image.open(self.mask_paths[i]).convert('L'))
 
         if self.transform is not None:
             t = self.transform(image=img, mask=mask)
@@ -438,6 +445,10 @@ class Swimseg(Dataset):
             self.norm_transform(img),
             mask
         )
+
+    def preload_images(self):
+        self.images = np.stack([Image.open(path) for path in self.img_paths])
+        self.masks = np.stack([Image.open(path).convert('L') for path in self.img_paths])
 
     def __len__(self):
         return len(self.img_paths) * self.aug_mult
