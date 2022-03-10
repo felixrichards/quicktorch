@@ -448,7 +448,7 @@ class Swimseg(Dataset):
 
     def preload_images(self):
         self.images = np.stack([Image.open(path) for path in self.img_paths])
-        self.masks = np.stack([Image.open(path).convert('L') for path in self.img_paths])
+        self.masks = np.stack([Image.open(path).convert('L') for path in self.mask_paths])
 
     def __len__(self):
         return len(self.img_paths) * self.aug_mult
