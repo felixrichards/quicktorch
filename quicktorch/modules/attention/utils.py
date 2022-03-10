@@ -12,10 +12,11 @@ def get_ms_backbone(key):
 
 
 class MSBackbone(nn.Module):
-    def __init__(self, ms_image=True, scales=[0, 1, 2]):
+    def __init__(self, ms_image=True, scales=[0, 1, 2], match_downscaling=True):
         super().__init__()
         self.ms_image = ms_image
         self.scales = scales
+        self.match_downscaling = match_downscaling
 
     def forward(self, x):
         if self.ms_image:
@@ -23,7 +24,8 @@ class MSBackbone(nn.Module):
             downs = [self.generate_features(down)[-1] for down in downs]
         else:
             downs = self.generate_features(x)
-            downs = self.downscale_features(downs)
+            if self.match_downscaling:
+                downs = self.downscale_features(downs)
         return downs
 
     def generate_features(self, x):
