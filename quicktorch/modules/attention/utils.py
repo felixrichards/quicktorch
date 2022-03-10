@@ -90,20 +90,22 @@ class StandardFeatures(MSBackbone):
         self.layer0 = standard_block(n_channels, base_channels * 1)
         self.layer1 = standard_block(base_channels * 1, base_channels * 2)
         self.layer2 = standard_block(base_channels * 2, base_channels * 3)
-        self.layer3 = standard_block(base_channels * 3, base_channels * 4)
+        self.layer3 = standard_block(base_channels * 3, base_channels * 4, pool=False)
         if self.ms_image:
             self.out_channels = [base_channels * 4] * len(self.scales)
         else:
             self.out_channels = [base_channels * 2, base_channels * 3, base_channels * 4]
 
 
-def standard_block(in_c, out_c):
-    return nn.Sequential(
+def standard_block(in_c, out_c, pool=True):
+    block = [
         nn.Conv2d(in_c, out_c, 3, padding=1),
         nn.BatchNorm2d(out_c),
         nn.ReLU(inplace=True),
         nn.Conv2d(out_c, out_c, 3, padding=1),
         nn.BatchNorm2d(out_c),
         nn.ReLU(inplace=True),
-        nn.MaxPool2d(2),
-    )
+    ]
+    if pool:
+        block.append(nn.MaxPool2d(2))
+    return nn.Sequential(*block)
