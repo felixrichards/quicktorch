@@ -329,7 +329,7 @@ class BSD500(Dataset):
             gts = gts['groundTruth']
             gts = np.array([gts[0,i][0,0][1] for i in range(gts.shape[1])])
             if dilate:
-                gts = np.array([cv2.dilate(gt, (3, 3)) for gt in gts])
+                gts = np.array([cv2.dilate(gt, (7, 7)) for gt in gts])
             if aggregation == 'weighted':
                 gts = gts.mean(axis=0)
             gts = (gts * 255).astype('uint8')
@@ -389,6 +389,58 @@ class EMDataset(Dataset):
 
     def __len__(self):
         return len(self.em_paths) * self.aug_mult
+
+
+class Swimseg(Dataset):
+    """Loads Swimseg cloud segmentation dataset from file.
+
+    Args:
+        img_dir (str): Path to dataset directory.
+        transform (Trasform, optional): Albumentation transform(s) to apply
+            to images/masks.
+        aug_mult (int, optional): Factor to increase dataset by with
+            augmentations.
+    """
+    means = (0.4808, 0.5728, 0.6849)
+    stds = (0.2310, 0.1911, 0.1612)
+
+    def __init__(self, img_dir, fold='train', transform=None, aug_mult=1,
+                 padding=0,):
+        super().__init__()
+        self.img_paths = [
+            img for img in glob.glob(os.path.join(img_dir, fold, '*.png'))
+        ]
+        self.mask_paths = [
+            img for img in glob.glob(os.path.join(img_dir, fold + '_labels', '*.png'))
+        ]
+
+        self.transform = transform
+        self.aug_mult = aug_mult
+        self.norm_transform = transforms.Normalize(self.means, self.stds)
+        self.padding = padding
+
+    def __getitem__(self, i):
+        i = i // self.aug_mult
+        img = np.array(Image.open(self.img_paths[i]))
+        mask = np.array(Image.open(self.mask_paths[i]))
+
+        if self.transform is not None:
+            t = self.transform(image=img, mask=mask)
+            img = t['image']
+            mask = t['mask']
+        img = transforms.ToTensor()(img)
+        mask = transforms.ToTensor()(mask)
+        # albumentations workaround
+        if self.padding > 0:
+            mask = remove_padding(mask, self.padding)
+
+        return (
+            self.norm_transform(img),
+            mask
+        )
+
+    def __len__(self):
+        return len(self.img_paths) * self.aug_mult
 
 
 def remove_padding(t, p):
