@@ -24,25 +24,29 @@ class DAFMetric(MultiClassSegmentationTracker):
         target = target.detach()
         target[target >= self.eta] = 1
         target[target < self.eta] = 0
-        target = target.to(torch.int32)
+        # target = target.to(torch.int32)
         seg_pred = seg_pred.detach()
         seg_pred = torch.sigmoid(seg_pred)
 
-        iou_ = torch.tensor([
-            self.iou_fn(
-                seg_pred[:, i].contiguous(),
-                target[:, i].contiguous()
-            ) for i in range(self.n_classes)
-        ])
-        if not self.full_metrics or self.n_classes == 1:
-            iou_ = iou_.mean()
-
-        self.metrics['IoU'] = self.batch_average(iou_, 'IoU')
-        self.metrics["Dice"] = self.batch_average(
-            self.dice_fn(
+        if self.n_classes == 1:
+            iou_ = self.iou_fn(seg_pred, target)
+            dice_ = self.dice_fn(seg_pred, target)
+        else:
+            iou_ = torch.tensor([
+                self.iou_fn(
+                    seg_pred[:, i].contiguous(),
+                    target[:, i].contiguous()
+                ) for i in range(self.n_classes)
+            ])
+            if not self.full_metrics:
+                iou_ = iou_.mean()
+            dice_ = self.dice_fn(
                 seg_pred.cpu().contiguous().round().numpy(),
                 target.cpu().contiguous().numpy()
-            ), 'Dice')
+            )
+
+        self.metrics['IoU'] = self.batch_average(iou_, 'IoU')
+        self.metrics["Dice"] = self.batch_average(dice_, 'Dice')
 
         if plot:
             fig, ax = plt.subplots(2, self.n_classes)
