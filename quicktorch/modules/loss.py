@@ -56,9 +56,6 @@ class SuperMajorityConsensusLossMC(ConsensusLoss):
         super_maj_weight = torch.tensor([self.beta], device=target.device)[None, :, None, None]
         maj_weight = torch.tensor([1], device=target.device)[None, :, None, None]
         super_maj_weight = super_maj_weight.expand_as(target) * (target >= self.sm)
-        target <= 0.24
-        target >= self.eta
-        target < self.sm
         maj_weight = maj_weight.expand_as(target) * (target <= 0.24 + torch.logical_and(target >= self.eta, target < self.sm))
 
         weight = super_maj_weight + maj_weight
