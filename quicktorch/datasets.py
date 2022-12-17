@@ -307,14 +307,14 @@ class SwimsegDataset(Dataset):
             to images/masks.
         aug_mult (int, optional): Factor to increase dataset by with
             augmentations.
-        padding (int, optional): 
+        padding_to_remove (int, optional): 
         preload (bool, optional): 
     """
     means = (0.4808, 0.5728, 0.6849)
     stds = (0.2310, 0.1911, 0.1612)
 
     def __init__(self, img_dir, fold, transform=None, aug_mult=1,
-                 padding=0, preload=True):
+                 padding_to_remove=0, preload=True):
         super().__init__()
         self.img_paths = [
             img for img in glob.glob(os.path.join(img_dir, fold, '*.png'))
@@ -326,7 +326,7 @@ class SwimsegDataset(Dataset):
         self.transform = transform
         self.aug_mult = aug_mult
         self.norm_transform = transforms.Normalize(self.means, self.stds)
-        self.padding = padding
+        self.padding_to_remove = padding_to_remove
         self.preload = preload
         if preload:
             self.preload_images()
@@ -348,8 +348,8 @@ class SwimsegDataset(Dataset):
         mask = transforms.ToTensor()(mask)
 
         # albumentations workaround
-        if self.padding > 0:
-            mask = remove_padding(mask, self.padding)
+        if self.padding_to_remove > 0:
+            mask = remove_padding(mask, self.padding_to_remove)
 
         return (
             self.norm_transform(img),
@@ -365,4 +365,5 @@ class SwimsegDataset(Dataset):
 
 
 def remove_padding(t: torch.Tensor, p: int) -> torch.Tensor:
+    print(f'{p=}')
     return t[..., p//2:-p//2, p//2:-p//2]

@@ -40,9 +40,10 @@ class TestSwimsegDataset():
 
     @pytest.mark.parametrize('fold', ('train', 'val', 'test'))
     def test_swimseg_padding(self, fold):
-        dataset = SwimsegDataset(os.path.join(SWIMSEG_PATH, 'swimseg'), fold, preload=False, padding=100)
+        dataset = SwimsegDataset(os.path.join(SWIMSEG_PATH, 'swimseg'), fold, preload=False, padding_to_remove=100)
         assert len(dataset) > 0
+        assert dataset.padding == 100
 
         image, mask = dataset[0]
-        assert image.shape == (3, 500, 500)
+        assert image.shape == (3, 600, 600)
         assert mask.shape == (1, 500, 500)
