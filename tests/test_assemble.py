@@ -2,7 +2,6 @@ import pytest
 
 import torch
 import torch.nn as nn
-import quicktorch.modules.attention.models as am
 import quicktorch.modules.attention.attention as aa
 from time import time, sleep
 
