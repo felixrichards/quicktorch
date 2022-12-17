@@ -2,7 +2,7 @@ import torch
 import torchvision
 from torchvision import transforms
 from .customtransforms import ConvertType, MakeCategorical
-from .datasets import MaskDataset, MNISTRot, BSD500
+from .datasets import MNISTRot, BSD500
 """
 This module contains functions that heavily abstract the
 dataset loading process for some famous datasets.
@@ -91,7 +91,6 @@ def mnist(dir='../data/mnist', batch_size=32, rotate=False, num_workers=0, idxs=
             transform.insert(0, transforms.RandomRotation(180))
 
     transform = transforms.Compose(transform)
-    target_transform = MakeCategorical()
 
     train_dataset = torchvision.datasets.MNIST(
         dir,
@@ -261,23 +260,3 @@ def bsd(batch_size=32, num_workers=0, transform=None, dir='../data/bsd500/',
             pin_memory=True, num_workers=num_workers,
         )
         return trainloader, testloader
-
-
-def clouds(image_dir='./clouds/swimseg/images/',
-           target_image_dir='./clouds/swimseg/GTmaps/',
-           train_idx=None, test_idx=None):
-    transform = transforms.Compose([
-        transforms.ToTensor(),
-        transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))]
-    )
-
-    cloud_train = MaskDataset(image_dir, target_image_dir, idx=train_idx,
-                              transform=transform, target_transform=transform)
-    cloud_trainloader = torch.utils.data.DataLoader(cloud_train,
-                                                    batch_size=4, shuffle=True)
-    cloud_test = MaskDataset(image_dir, target_image_dir, idx=test_idx,
-                             transform=transform, target_transform=transform)
-    cloud_testloader = torch.utils.data.DataLoader(cloud_test,
-                                                   batch_size=4, shuffle=True)
-
-    return cloud_trainloader, cloud_testloader

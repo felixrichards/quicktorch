@@ -1,115 +1,22 @@
-import csv
 import glob
 import os
 import shutil
+
+from typing import Tuple
+
 import torch
+import numpy as np
+import PIL.Image as Image
+import scipy.io
+
 from torchvision import transforms
 from torch.utils.data.dataset import Dataset
-from skimage import io
-import PIL.Image as Image
-import numpy as np
+
 from .customtransforms import MakeCategorical
 from .utils import download
-import scipy.io
-import matplotlib.pyplot as plt
-import cv2
+
 """This module provides wrappers for loading custom datasets.
 """
-
-
-def read_csv(path):
-    reader = csv.DictReader(open(path))
-    out = {key: [] for key in reader.fieldnames}
-
-    for row in reader:
-        for column, value in row.items():
-            out[column].append(value)
-
-    return out
-
-
-class ClassificationDataset(Dataset):
-    """Loads a classification dataset from file.
-
-    Assumes labels are stored in a CSV file with the images in the same folder.
-    It seems a little unintuitive and unnecessarily restrictive to support only
-    passing a CSV filename for initialisation. Perhaps I will change this at
-    some point.
-
-    Args:
-        csv_file (str, optional): Filename of csv file.
-            Extension not necessary.
-        transform (torchvision.transforms.Trasform, optional): Transform(s) to
-        be applied to the data.
-        **kwargs:
-            weights_url (str, optional): A URL to download pre-trained weights.
-            name (str, optional): See above. Defaults to None.
-    """
-    def __init__(self, csv_file, transform=transforms.ToTensor()):
-        self.csv_file = csv_file
-        self.image_dir = os.path.split(csv_file)[0]
-        csv_data = read_csv(csv_file)
-        self.image_paths = [os.path.join(self.image_dir, img)
-                            for img in csv_data['imagename']]
-
-        if type(csv_data['label'][0]) is str:
-            key_to_val = {lbl: idx
-                          for idx, lbl in enumerate(set(csv_data['label']))}
-            self.labels = [key_to_val[lbl] for lbl in csv_data['label']]
-        else:
-            self.labels = csv_data['label']
-
-        self.num_classes = len(set(self.labels))
-        self.transform = transform
-        self.target_transform = MakeCategorical(n_classes=self.num_classes)
-
-    def __getitem__(self, i):
-        image = Image.open(self.image_paths[i])
-        image = self.transform(image)
-        label = self.target_transform(self.labels[i])
-        return image, label
-
-    def __len__(self):
-        return len(self.image_paths)
-
-
-class MaskDataset(Dataset):
-    """Loads a mask dataset from file.
-
-    Args:
-        image_dir (str): Directory of training images.
-        target_image_dir (str): Directory of image targets.
-        transform (torchvision.transforms.Trasform, optional): Transform(s) to
-            be applied to the training data.
-            Defaults to transforms.ToTensor().
-        target_transform (torchvision.transforms.Trasform, optional):
-            Transform(s) to be applied to the target data.
-            Defaults to transforms.ToTensor().
-        idx (np.array, optional): Array of indices to select dataset.
-            E.g. for folds.
-        **kwargs:
-            weights_url (str, optional): A URL to download pre-trained weights.
-            name (str, optional): See above. Defaults to None.
-    """
-    def __init__(self, image_dir, target_image_dir,
-                 transform=transforms.ToTensor(),
-                 target_transform=transforms.ToTensor(), idx=slice(None)):
-        imgs = np.array(glob.glob(os.path.join(image_dir, '*.png')))
-        t_imgs = np.array(glob.glob(os.path.join(target_image_dir, '*.png')))
-        self.image_paths = sorted(imgs[idx])
-        self.target_image_paths = sorted(t_imgs[idx])
-        self.transform = transform
-        self.target_transform = target_transform
-
-    def __getitem__(self, i):
-        image = io.imread(self.image_paths[i])
-        target = np.expand_dims(io.imread(self.target_image_paths[i]), axis=2)
-        image = self.transform(image)
-        target = self.target_transform(target)
-        return image, target
-
-    def __len__(self):
-        return len(self.image_paths)
 
 
 class MNISTRot(Dataset):
@@ -127,6 +34,7 @@ class MNISTRot(Dataset):
         test (bool, optional): Whether to load the testing dataset. Defaults to False.
         transforms (list, optional): Transforms to apply to images.
         indices (arraylike, optional): Indices of samples to form dataset from.
+        onehot: (bool, optional): format to load targets in.
     """
 
     url = ('http://www.iro.umontreal.ca/'
@@ -263,7 +171,7 @@ class BSD500(Dataset):
 
         self.padding = padding
 
-    def __getitem__(self, i):
+    def __getitem__(self, i: int) -> Tuple[torch.Tensor, torch.Tensor]:
         img = np.array(Image.open(self.img_paths[i]))
         label = np.array(Image.open(self.mask_paths[i]))
 
@@ -321,15 +229,13 @@ class BSD500(Dataset):
         for f in glob.glob(os.path.join(self.dir, 'raw', from_dir, "*.jpg")):
             shutil.copy(f, os.path.join(self.dir, 'processed', to_dir, 'images'))
 
-    def _convert_mat_to_png(self, from_dir, to_dir, aggregation='weighted', dilate=True):
+    def _convert_mat_to_png(self, from_dir, to_dir, aggregation='weighted'):
         for f in glob.glob(os.path.join(self.dir, 'raw', from_dir, "*.mat")):
             name = os.path.split(f)[-1]
             name = name[:len(name)-4] + '.png'
             gts = scipy.io.loadmat(f)
             gts = gts['groundTruth']
-            gts = np.array([gts[0,i][0,0][1] for i in range(gts.shape[1])])
-            if dilate:
-                gts = np.array([cv2.dilate(gt, (7, 7)) for gt in gts])
+            gts = np.array([gts[0, i][0, 0][1] for i in range(gts.shape[1])])
             if aggregation == 'weighted':
                 gts = gts.mean(axis=0)
             gts = (gts * 255).astype('uint8')
@@ -368,7 +274,7 @@ class EMDataset(Dataset):
             if not self.test:
                 self.mask_paths = [self.mask_paths[i] for i in indices]
 
-    def __getitem__(self, i):
+    def __getitem__(self, i: int) -> Tuple[torch.Tensor, torch.Tensor]:
         i = i // self.aug_mult
         em = np.array(Image.open(self.em_paths[i]))
         if self.test:
@@ -391,20 +297,23 @@ class EMDataset(Dataset):
         return len(self.em_paths) * self.aug_mult
 
 
-class Swimseg(Dataset):
+class SwimsegDataset(Dataset):
     """Loads Swimseg cloud segmentation dataset from file.
 
     Args:
         img_dir (str): Path to dataset directory.
+        fold (str): What dataset phase to load. Choices are ('train', 'val', 'test').
         transform (Trasform, optional): Albumentation transform(s) to apply
             to images/masks.
         aug_mult (int, optional): Factor to increase dataset by with
             augmentations.
+        padding (int, optional): 
+        preload (bool, optional): 
     """
     means = (0.4808, 0.5728, 0.6849)
     stds = (0.2310, 0.1911, 0.1612)
 
-    def __init__(self, img_dir, fold='train', transform=None, aug_mult=1,
+    def __init__(self, img_dir, fold, transform=None, aug_mult=1,
                  padding=0, preload=True):
         super().__init__()
         self.img_paths = [
@@ -422,7 +331,7 @@ class Swimseg(Dataset):
         if preload:
             self.preload_images()
 
-    def __getitem__(self, i):
+    def __getitem__(self, i: int) -> Tuple[torch.Tensor, torch.Tensor]:
         i = i // self.aug_mult
         if self.preload:
             img = self.images[i]
@@ -446,13 +355,13 @@ class Swimseg(Dataset):
             mask
         )
 
-    def preload_images(self):
+    def preload_images(self) -> None:
         self.images = np.stack([Image.open(path) for path in self.img_paths])
         self.masks = np.stack([Image.open(path).convert('L') for path in self.mask_paths])
 
-    def __len__(self):
+    def __len__(self) -> int:
         return len(self.img_paths) * self.aug_mult
 
 
-def remove_padding(t, p):
+def remove_padding(t: torch.Tensor, p: int) -> torch.Tensor:
     return t[..., p//2:-p//2, p//2:-p//2]

@@ -241,6 +241,11 @@ def evaluate(net, input, device='cpu', metrics=None, surpress=False, figs_dir=No
         with torch.no_grad():
             output = net(data[0].to(device))
         metrics.update(output, data[1].to(device))
+        if False:
+            fig, ax = plt.subplots(1, 4)
+            for axi, img in zip(ax, (data[0], data[1], output, torch.sigmoid(output).round())):
+                axi.imshow(img[0, 0].detach().cpu().numpy())
+            plt.show()
         if figs_dir is not None:
             if b_size > 1:
                 print('b_size > 1 not implemented')

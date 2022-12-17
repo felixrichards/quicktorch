@@ -35,40 +35,6 @@ from quicktorch.data import cifar
 trainloader, testloader, classes = cifar(alexnet=True, batch_size=256)
 ```
 
-### Extensions of Dataset class for common dataset types. 
-
-For classification dataset create a CSV file with headers "imagename,label" and put it in image folder:
-
-```
-from quicktorch.datasets import ClassificationDataset
-from quicktorch.utils import imshow
-import torch
-
-dataset = ClassificationDataset("path/to/file.csv")
-print(len(dataset))
-
-dataloader = torch.utils.data.Dataloader(dataset)
-
-images, labels = next(iter(dataloader))
-imshow(images)
-```
-
-For mask dataset:
-
-```
-from quicktorch.datasets import MaskDataset
-from quicktorch.utils import imshow
-import torch
-
-dataset = MaskDataset("path/to/images/", "path/to/masks/")
-print(len(dataset))
-
-dataloader = torch.utils.data.Dataloader(dataset)
-
-images, labels = next(iter(dataloader))
-imshow(images)
-```
-
 ### Extension of Model class for extra utilities
 
 Enabling pretraining and transfer learning for new dataset with N classes:
@@ -113,16 +79,3 @@ Some features:
 * Neat image vis for classification and mask datasets (shown above)
 * k-Fold splits
 * Training functions for standard CNN and GAN (shown above)
-
-```
-import quicktorch.utils as utils
-from quicktorch.datasets import MaskDataset
-import glob
-
-splits = get_splits(len(glob.glob('path/to/images/*.png'))
-
-for train_idx, test_idx in splits:
-    dataset = MaskDataset("path/to/images/", "path/to/masks/",
-                          train_idx=train_idx, test_idx=test_idx)
-    # train network on each fold
-```
