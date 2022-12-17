@@ -346,6 +346,7 @@ class SwimsegDataset(Dataset):
             mask = t['mask']
         img = transforms.ToTensor()(img)
         mask = transforms.ToTensor()(mask)
+
         # albumentations workaround
         if self.padding > 0:
             mask = remove_padding(mask, self.padding)
