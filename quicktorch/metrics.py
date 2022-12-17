@@ -410,31 +410,25 @@ def _clip(pred):
     return pred.clip(0, 1)
 
 
-def iou(pred, lbl, to_mask=None):
-    def make_compatible(a):
-        if type(a) is torch.Tensor:
-            a = a.cpu().numpy()
-        return a.round()
-    pred = make_compatible(pred)
-    lbl = make_compatible(lbl)
-    pred = pred.flatten()
-    lbl = lbl.flatten()
-    if to_mask is not None:
-        pred = to_mask(pred, lbl)
-    score = jaccard_score(lbl, pred, zero_division=1.)
-    # try:
-    # except:
-    #     score = 1.
-    return score
+def iou(pred, lbl):
+    pred = pred.round()
+    if torch.is_floating_point(lbl):
+        lbl = lbl.round()
+    i = torch.logical_and(pred, lbl).sum()
+    u = torch.logical_or(pred, lbl).sum()
+    if u == 0:
+        return 1.
+    score = i / u
+    return score.item()
 
 
-def dice(pred, lbl, to_mask=None):
-    pred = pred.flatten()
-    lbl = lbl.flatten()
-    if to_mask is not None:
-        pred = to_mask(pred)
-    try:
-        score = f1_score(lbl, pred, zero_division=1.)
-    except:
-        score = 1.
-    return score
+def dice(pred, lbl):
+    pred = pred.round()
+    if torch.is_floating_point(lbl):
+        lbl = lbl.round()
+    i = torch.logical_and(pred, lbl).sum()
+    positives = pred.sum() + lbl.sum()
+    if positives == 0:
+        return 1.
+    score = 2 * i / positives
+    return score.item()

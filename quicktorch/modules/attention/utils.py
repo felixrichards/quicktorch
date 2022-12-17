@@ -5,6 +5,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from torchvision.models import resnext50_32x4d, resnet50
+from torchvision.models.detection.backbone_utils import resnet_fpn_backbone, _validate_trainable_layers
 
 
 def get_ms_backbone(key):
@@ -83,6 +84,36 @@ class ResNet50Features(MSBackbone):
             first_layer.weight[:, :min(self.n_channels, 3)] = conv1.weight[:, :min(self.n_channels, 3)]
         model.conv1 = first_layer
         return model
+
+
+class ResNet50FPNFeatures(MSBackbone):
+    def __init__(self, n_channels=4, ms_image=True, scales=[0, 1, 2], **kwargs):
+        super().__init__(ms_image=ms_image, scales=scales, match_downscaling=False)
+        self.n_channels = n_channels
+        self.net = self.resnet50fpn()
+        if self.ms_image:
+            self.out_channels = [256] * len(self.scales)
+        else:
+            self.out_channels = [256, 256, 256, 256, 256]
+
+    def resnet50fpn(self):
+        trainable_backbone_layers = _validate_trainable_layers(
+            True, None, 5, 3
+        )
+        model = resnet_fpn_backbone('resnet50', True, trainable_layers=trainable_backbone_layers)
+        model = self.recorrect_in_channels(model)
+        return model
+
+    def recorrect_in_channels(self, model):
+        conv1 = model.body.conv1
+        first_layer = nn.Conv2d(self.n_channels, 64, kernel_size=7, stride=2, padding=3, bias=False)
+        with torch.no_grad():
+            first_layer.weight[:, :min(self.n_channels, 3)] = conv1.weight[:, :min(self.n_channels, 3)]
+        model.body.conv1 = first_layer
+        return model
+
+    def generate_features(self, x):
+        return list(self.net(x).values())
 
 
 class StandardFeatures(MSBackbone):
